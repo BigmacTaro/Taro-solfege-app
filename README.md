@@ -81,8 +81,7 @@ SPEC.md                          設計メモ(仕様と決定事項)
 
 ## ドキュメント
 
-- [SPEC.md](SPEC.md): 仕様と決定事項(開発者向け)
-- [CONTRIBUTING.md](CONTRIBUTING.md): 開発への参加方法
+- [SPEC.md](SPEC.md): 仕様、決定事項、保守のルール(開発者向け)
 - [仕様と使い方(利用者向け)](https://bigmactaro.github.io/Taro-solfege-app/spec.html)
 
 ## ライセンス
