@@ -25,9 +25,21 @@ export interface Settings {
   setCheckShort(v: boolean): void
 }
 
+/** タッチ操作の端末(スマホ・タブレット)か。iPadのSafariは、Macと同じ表示でも、複数のタッチ点を持つ */
+function isTouchDevice(): boolean {
+  try {
+    return window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 1
+  } catch {
+    return false
+  }
+}
+
+/** マイク感度の初期値: スマホ・タブレットは、入力が小さいので×3.0、パソコンは×1.0 */
+const defaultGain = () => (isTouchDevice() ? 3 : 1)
+
 /** マイク・楽器の設定。端末に保存する */
 export function useSettings(): Settings {
-  const [gain, setGain] = useState(() => Math.min(MAX_GAIN, Math.max(1, load('gain', 1))))
+  const [gain, setGain] = useState(() => Math.min(MAX_GAIN, Math.max(1, load('gain', defaultGain()))))
   const [agc, setAgc] = useState(() => load('agc', true))
   const [ns, setNs] = useState(() => load('ns', false))
   const [deviceId, setDeviceId] = useState('')
