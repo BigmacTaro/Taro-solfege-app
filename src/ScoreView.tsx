@@ -19,6 +19,8 @@ import { beatsToVexDuration, isTriplet, keySignatureCount, noteVexKey, type Scor
 
 // VexFlowの五線は、指定した位置より約40px下から始まる(上の余白を含むため)。その分を差し引く
 const STAVE_TOP = -20
+// 1段目の上の余白。三連符の括弧と数字、連桁、高い音の符幹は五線の上に描かれ、SVGの外にはみ出すと切れて見えない
+const TOP_PAD = 24
 
 const COLORS = {
   ok: '#1e9e5a',
@@ -88,7 +90,7 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
   const rowHeight = verdicts ? 134 : 92
 
   const renderer = new Renderer(el, Renderer.Backends.SVG)
-  renderer.resize(width, rows * rowHeight)
+  renderer.resize(width, rows * rowHeight + TOP_PAD)
   const ctx = renderer.getContext()
 
   const margin = 8
@@ -106,7 +108,7 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
     const bw = baseWidth(row)
     const x = margin + (col === 0 ? 0 : headExtra(row) + col * bw)
     const w = col === 0 ? bw + headExtra(row) : bw
-    const y = row * rowHeight + STAVE_TOP
+    const y = TOP_PAD + row * rowHeight + STAVE_TOP
 
     const stave = new Stave(x, y, w)
     if (col === 0) {
