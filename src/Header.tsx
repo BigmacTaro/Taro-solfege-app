@@ -14,7 +14,7 @@ export function Header({ s, locked, onReset }: { s: Settings; locked: boolean; o
   return (
     <header className="topbar">
       <div className="toprow">
-        <div className="reloadnote">動作がおかしくなったらブラウザをリロードしてください</div>
+        <div className="reloadnote">動作がおかしくなったら「音声リセット」を押すかブラウザをリロードしてみてください</div>
         <button className="secondary tinyreset" onClick={doReset} title="音が出ない・課題が始まらないときに押す">
           🔧 {resetMsg || '音声リセット'}
         </button>
