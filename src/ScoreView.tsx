@@ -1,40 +1,75 @@
 import { useEffect, useRef } from 'react'
-import { Barline, Beam, Dot, Formatter, Renderer, Stave, StaveNote, Voice } from 'vexflow'
+import { Annotation, Barline, Beam, Dot, Formatter, Renderer, Stave, StaveNote, Voice } from 'vexflow'
+import type { NoteVerdict } from './eval/evaluate'
 import { beatsToVexDuration, stepToVexKey, type Score } from './music/score'
 
-const ROW_HEIGHT = 150
 const STAVE_TOP = 30
 
-export function ScoreView({ score }: { score: Score }) {
+const COLORS = {
+  ok: '#1e9e5a',
+  pitch: '#d93025',
+  timing: '#e8710a',
+  missed: '#9aa0a6',
+}
+
+export function ScoreView({ score, verdicts }: { score: Score; verdicts?: NoteVerdict[][] }) {
   const ref = useRef<HTMLDivElement>(null)
+  const lastWidth = useRef(0)
 
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    let lastWidth = 0
     const draw = () => {
       const width = Math.floor(el.clientWidth)
-      if (width === lastWidth || width === 0) return
-      lastWidth = width
-      renderScore(el, score, width)
+      if (width === 0) return
+      lastWidth.current = width
+      renderScore(el, score, width, verdicts)
     }
     draw()
-    const ro = new ResizeObserver(draw)
+    const ro = new ResizeObserver(() => {
+      if (Math.floor(el.clientWidth) !== lastWidth.current) draw()
+    })
     ro.observe(el)
     return () => ro.disconnect()
-  }, [score])
+  }, [score, verdicts])
 
   return <div ref={ref} className="score" />
 }
 
-function renderScore(el: HTMLDivElement, score: Score, width: number) {
+/** 音符の色: 緑=正解、赤=音高が違う、橙=タイミング/長さに指摘、灰=聞き取れず */
+function colorOf(v: NoteVerdict): string {
+  if (v.missed) return COLORS.missed
+  if (!v.pitchOk) return COLORS.pitch
+  if (!v.timingOk || v.duration) return COLORS.timing
+  return COLORS.ok
+}
+
+/** 音符の下に出す小さな文字。ずれの量を伝える */
+function labelsOf(v: NoteVerdict): string[] {
+  if (v.isRest) return v.restBroken ? ['休めてない'] : []
+  if (v.missed) return ['聞こえず']
+  const out: string[] = []
+  const cents = Math.round(v.centsOff!)
+  if (v.pitchOk) out.push(`${cents >= 0 ? '+' : ''}${cents}¢`)
+  else out.push(`${v.sungName} ${cents >= 0 ? '+' : ''}${cents}¢`)
+  if (!v.timingOk) {
+    const b = Math.abs(v.timingErrBeats!).toFixed(1)
+    out.push(v.timingErrBeats! > 0 ? `遅${b}拍` : `早${b}拍`)
+  }
+  if (v.duration === 'short') out.push('短い')
+  if (v.duration === 'long') out.push('長い')
+  return out
+}
+
+function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?: NoteVerdict[][]) {
   el.replaceChildren()
   // 狭い画面では1段2小節にする
   const barsPerRow = width < 560 ? 2 : 4
   const rows = Math.ceil(score.bars.length / barsPerRow)
+  const rowHeight = verdicts ? 185 : 150
 
   const renderer = new Renderer(el, Renderer.Backends.SVG)
-  renderer.resize(width, rows * ROW_HEIGHT)
+  renderer.resize(width, rows * rowHeight)
   const ctx = renderer.getContext()
 
   const margin = 8
@@ -49,7 +84,7 @@ function renderScore(el: HTMLDivElement, score: Score, width: number) {
     const bw = baseWidth(row)
     const x = margin + (col === 0 ? 0 : headExtra(row) + col * bw)
     const w = col === 0 ? bw + headExtra(row) : bw
-    const y = row * ROW_HEIGHT + STAVE_TOP
+    const y = row * rowHeight + STAVE_TOP
 
     const stave = new Stave(x, y, w)
     if (col === 0) {
@@ -60,13 +95,28 @@ function renderScore(el: HTMLDivElement, score: Score, width: number) {
     if (index === score.bars.length - 1) stave.setEndBarType(Barline.type.END)
     stave.setContext(ctx).draw()
 
-    const notes = bar.map((n) => {
+    const notes = bar.map((n, i) => {
       const duration = beatsToVexDuration(n.beats)
       const note =
         n.step === null
           ? new StaveNote({ keys: ['b/4'], duration: `${duration}r` })
           : new StaveNote({ keys: [stepToVexKey(n.step)], duration, autoStem: true })
       if (duration.endsWith('d')) Dot.buildAndAttach([note], { all: true })
+
+      const v = verdicts?.[index]?.[i]
+      if (v) {
+        const labels = labelsOf(v)
+        const color = v.isRest ? (v.restBroken ? COLORS.pitch : '#000') : colorOf(v)
+        note.setStyle({ fillStyle: color, strokeStyle: color })
+        labels.forEach((text, k) => {
+          const a = new Annotation(text)
+            .setFont('system-ui', 9)
+            .setVerticalJustification(Annotation.VerticalJustify.BOTTOM)
+          if (k === 0) a.setStyle({ fillStyle: color, strokeStyle: color })
+          else a.setStyle({ fillStyle: COLORS.timing, strokeStyle: COLORS.timing })
+          note.addModifier(a, 0)
+        })
+      }
       return note
     })
 
