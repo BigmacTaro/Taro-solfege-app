@@ -37,7 +37,7 @@ export function App() {
             disabled={locked}
             onClick={() => setTab('pitch')}
           >
-            ピッチ試作
+            マイクテスト
           </button>
           <label className="instsel">
             <span>楽器</span>

@@ -116,7 +116,7 @@ button.start:disabled { background: var(--disabled-bg); box-shadow: none; }
 .tempo-row input[type=range] { flex: 1 1 0; min-width: 0; }
 .seedline { margin: 4px 0 0; }
 
-/* ピッチ試作 */
+/* マイクテスト */
 .readout { text-align: center; margin: 16px 0; }
 .note { font-size: 4rem; font-weight: 700; line-height: 1.1; }
 .cents { font-size: 1.2rem; color: var(--ok); min-height: 1.6em; }
