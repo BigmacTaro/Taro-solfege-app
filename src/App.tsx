@@ -1,9 +1,11 @@
 import { useCallback, useState } from 'react'
+import { AboutDialog } from './AboutDialog'
 import { resetAudio } from './audio/engine'
 import { Header } from './Header'
 import { INSTRUMENTS } from './instruments'
 import { PitchLab } from './PitchLab'
 import { ScoreTab } from './ScoreTab'
+import { load, save } from './storage'
 import { useSettings } from './useSettings'
 
 type Tab = 'score' | 'pitch'
@@ -18,6 +20,12 @@ export function App() {
   const onLock = useCallback((v: boolean) => setLocked(v), [])
   // 「音声をリセット」を押した回数。各タブは、増えたら再生・録音を止める
   const [resetTick, setResetTick] = useState(0)
+  // 説明は、初めて開いたときに自動で出す。閉じたら、次からは出さない(ヘッダーの「ⓘ」で開き直せる)
+  const [aboutOpen, setAboutOpen] = useState(() => !load('aboutSeen', false))
+  const closeAbout = useCallback(() => {
+    setAboutOpen(false)
+    save('aboutSeen', true)
+  }, [])
   const onReset = useCallback(async () => {
     setResetTick((t) => t + 1)
     await resetAudio()
@@ -25,7 +33,8 @@ export function App() {
 
   return (
     <>
-      <Header s={settings} locked={locked} onReset={onReset} />
+      <Header s={settings} locked={locked} onReset={onReset} onAbout={() => setAboutOpen(true)} />
+      {aboutOpen && <AboutDialog onClose={closeAbout} />}
       <main>
         <div className="tabs" role="tablist">
           <button
