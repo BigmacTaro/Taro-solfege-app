@@ -8,6 +8,8 @@ export interface ScoreNote {
   step: number | null
   /** 音階の音からの変化(半音)。短調の導音(第7音を半音上げる)で +1 */
   alter?: number
+  /** 次の音符(同じ高さ。次の小節の最初でもよい)とタイで結ばれている。結ばれた音は1つの音として鳴らす */
+  tie?: boolean
 }
 
 export interface KeyInfo {
@@ -163,4 +165,45 @@ export function keySignatureCount(key: KeyInfo): number {
 /** 1拍(メトロノームの拍)の長さを秒で表すとき、4分音符1つ分の秒数 */
 export function secondsPerQuarter(tempo: number, meter: Meter): number {
   return 60 / tempo / meter.beatLen
+}
+
+/** 実際に発音される音(タイで結ばれた音符は、1つにまとめる)。休符は含まない */
+export interface SoundedNote {
+  /** 先頭の音符の位置(小節番号、小節内の何番目か) */
+  bar: number
+  index: number
+  step: number
+  alter?: number
+  /** タイで結ばれた分を含む長さ(4分音符=1) */
+  beats: number
+  /** 先頭の1小節目の頭からの位置(4分音符の数) */
+  pos: number
+  /** タイで結ばれた、後ろの音符の位置 */
+  cont: { bar: number; index: number }[]
+}
+
+export function soundedNotes(score: Score): SoundedNote[] {
+  const out: SoundedNote[] = []
+  let last: SoundedNote | null = null
+  let tied = false
+  score.bars.forEach((bar, b) => {
+    let pos = b * score.meter.barLen
+    bar.forEach((n, i) => {
+      if (n.step === null) {
+        last = null
+        tied = false
+      } else if (tied && last) {
+        // 前の音とタイで結ばれている続きの音符: 新しく鳴らさず、長さだけ足す
+        last.beats += n.beats
+        last.cont.push({ bar: b, index: i })
+        tied = !!n.tie
+      } else {
+        last = { bar: b, index: i, step: n.step, alter: n.alter, beats: n.beats, pos, cont: [] }
+        out.push(last)
+        tied = !!n.tie
+      }
+      pos += n.beats
+    })
+  })
+  return out
 }

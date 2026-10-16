@@ -16,7 +16,7 @@ import {
 /**
  * 8小節の旋律の自動生成。
  * - 初級: ハ長調・4/4、最短は八分音符。
- * - 中級: 4/4、調号3つまでの長調・短調。シンコペーションや三連符を含む。
+ * - 中級: 4/4と3/4、調号3つまでの長調・短調。シンコペーション(タイを伴うもの、小節をまたぐものを含む)や三連符を含む。
  * - 上級: 4/4・3/4・6/8、調号5つまでの長調・短調。十六分音符や付点のリズム、シンコペーション、三連符(6/8を除く)を含む。
  *
  * 楽典の考え方に沿って作る。
@@ -33,7 +33,13 @@ import {
 
 /** 負の値は休符(長さは絶対値) */
 type Rhythm = number[]
-type Motif = [Rhythm, Rhythm]
+/** タイで次の音と結ぶ音符: [動機の何小節目(0か1), 小節内の何番目の音符か] */
+type Ties = [number, number][]
+type Motif = [Rhythm, Rhythm] | [Rhythm, Rhythm, Ties]
+
+/** 動機の指定した小節で、タイで次と結ぶ音符の番号 */
+const tiesOf = (m: Motif, barInMotif: number): number[] =>
+  (m[2] ?? []).filter(([b]) => b === barInMotif).map(([, i]) => i)
 
 const T = 1 / 3 // 八分三連符
 const Q = 2 / 3 // 四分三連符
@@ -130,17 +136,40 @@ const SIXTEENTH_MOTIFS_68: [Motif, number][] = [
   [[[0.5, 0.25, 0.25, 0.5, 1.5], [1.5, 1.5]], 2],
 ]
 
+/**
+ * タイを伴うシンコペーション(4/4)。拍の裏の短い音が、次の拍や小節の頭の音とタイで結ばれ、
+ * 小節の頭や3拍目に新しい発音がない。小節をまたぐものも含む(タイは小節の前半側で指定)
+ */
+const TIED_MOTIFS: [Motif, number][] = [
+  [[[1, 1, 1, 0.5, 0.5], [1, 1, 2], [[0, 4]]], 4],
+  [[[1, 0.5, 0.5, 1, 1], [1, 1, 2], [[0, 2]]], 3],
+  [[[1, 1, 0.5, 0.5, 1], [2, 2], [[0, 3]]], 3],
+  [[[1, 1, 1, 0.5, 0.5], [1.5, 0.5, 2], [[0, 4]]], 3],
+  [[[2, 1, 0.5, 0.5], [2, 2], [[0, 3]]], 3],
+  [[[1.5, 1.5, 0.5, 0.5], [1, 1, 2], [[0, 3]]], 3],
+]
+const TIED_MOTIFS_34: [Motif, number][] = [
+  [[[1, 1, 0.5, 0.5], [1, 2], [[0, 3]]], 4],
+  [[[1, 0.5, 0.5, 1], [1, 2], [[0, 2]]], 3],
+  [[[2, 0.5, 0.5], [1, 2], [[0, 2]]], 3],
+]
+const TIED_MOTIFS_68: [Motif, number][] = [
+  [[[1.5, 1, 0.5], [1.5, 1.5], [[0, 2]]], 4],
+  [[[1, 0.5, 1, 0.5], [1.5, 1.5], [[0, 3]]], 3],
+]
+
 /** 拍子ごとの動機の一覧。triplet は6/8にはない */
 interface MotifSet {
   basic: [Motif, number][]
   syncopated: [Motif, number][]
   triplet: [Motif, number][]
+  tied: [Motif, number][]
   sixteenth: [Motif, number][]
 }
 const MOTIF_SETS: Record<MeterId, MotifSet> = {
-  '4/4': { basic: BASIC_MOTIFS, syncopated: SYNCOPATED_MOTIFS, triplet: TRIPLET_MOTIFS, sixteenth: SIXTEENTH_MOTIFS },
-  '3/4': { basic: BASIC_MOTIFS_34, syncopated: SYNCOPATED_MOTIFS_34, triplet: TRIPLET_MOTIFS_34, sixteenth: SIXTEENTH_MOTIFS_34 },
-  '6/8': { basic: BASIC_MOTIFS_68, syncopated: SYNCOPATED_MOTIFS_68, triplet: [], sixteenth: SIXTEENTH_MOTIFS_68 },
+  '4/4': { basic: BASIC_MOTIFS, syncopated: SYNCOPATED_MOTIFS, triplet: TRIPLET_MOTIFS, tied: TIED_MOTIFS, sixteenth: SIXTEENTH_MOTIFS },
+  '3/4': { basic: BASIC_MOTIFS_34, syncopated: SYNCOPATED_MOTIFS_34, triplet: TRIPLET_MOTIFS_34, tied: TIED_MOTIFS_34, sixteenth: SIXTEENTH_MOTIFS_34 },
+  '6/8': { basic: BASIC_MOTIFS_68, syncopated: SYNCOPATED_MOTIFS_68, triplet: [], tied: TIED_MOTIFS_68, sixteenth: SIXTEENTH_MOTIFS_68 },
 }
 
 /** 最後の小節(主音で終わる) */
@@ -211,6 +240,8 @@ interface EventCtx {
   guideWeight: number
   /** この音に許される高さの制限(最初の音・終止の音) */
   onlySteps?: Set<number>
+  /** 和声音に限る(タイで長く保持される音) */
+  requireChord?: boolean
 }
 
 function stepWeight(d: number, beats: number): number {
@@ -251,6 +282,7 @@ function nextStep(rng: Rng, st: State, ev: EventCtx): number | null {
     }
 
     const isChord = ev.chord.has(m)
+    if (ev.requireChord && !isChord) continue
     // 長い音は和声音、強拍も和声音を好む
     if (ev.beats >= 2 && !isChord) continue
     w *= ev.strong ? (isChord ? 5 : 0.15) : isChord ? 1.2 : 1
@@ -306,6 +338,7 @@ function walk(
   rng: Rng,
   st: State,
   rhythms: Rhythm[],
+  ties: number[][],
   barRoots: number[],
   mode: Mode,
   meter: Meter,
@@ -319,6 +352,8 @@ function walk(
   const bars: ScoreNote[][] = []
   const intervals: (number | undefined)[] = []
   let k = 0
+  /** 直前の音符がタイで結ばれているときの高さ。次の音符はその続き(同じ高さ)になる */
+  let tiedFrom: { step: number; alter: number } | null = null
   for (let b = 0; b < rhythms.length; b++) {
     const events = rhythms[b]
     const dominant = barRoots[b] === 4
@@ -331,6 +366,19 @@ function walk(
       const beats = Math.abs(e)
       if (e < 0) {
         notes.push({ beats, step: null })
+        tiedFrom = null
+        pos += beats
+        continue
+      }
+      const tieHere = (ties[b] ?? []).includes(i)
+      if (tiedFrom) {
+        // タイの続きの音符: 新しい高さは選ばず、同じ高さを置く
+        const note: ScoreNote = tiedFrom.alter
+          ? { beats, step: tiedFrom.step, alter: tiedFrom.alter }
+          : { beats, step: tiedFrom.step }
+        if (tieHere) note.tie = true
+        else tiedFrom = null
+        notes.push(note)
         pos += beats
         continue
       }
@@ -351,6 +399,16 @@ function walk(
       }
       if (st.prev === null && opts.startSteps) ev.onlySteps = opts.startSteps
       if (b === rhythms.length - 1 && i === lastPitched && opts.endSteps) ev.onlySteps = opts.endSteps
+      if (tieHere) {
+        // タイで長く保持される音は和声音。小節をまたぐときは、前後の小節の和音に共通する音に限る
+        ev.requireChord = true
+        if (i === events.length - 1) {
+          if (b + 1 >= rhythms.length) return null
+          const nextChord = chordTones(barRoots[b + 1])
+          ev.chord = new Set([...chord].filter((x) => nextChord.has(x)))
+          if (ev.chord.size === 0) return null
+        }
+      }
       const s = nextStep(rng, st, ev)
       if (s === null) return null
       const m = mod(s, 7)
@@ -361,7 +419,12 @@ function walk(
       st.prev2 = st.prev
       st.prev = s
       st.prevRaised = alter === 1
-      notes.push(alter ? { beats, step: s, alter } : { beats, step: s })
+      const note: ScoreNote = alter ? { beats, step: s, alter } : { beats, step: s }
+      if (tieHere) {
+        note.tie = true
+        tiedFrom = { step: s, alter }
+      }
+      notes.push(note)
       pos += beats
       k++
     }
@@ -374,7 +437,14 @@ function walk(
 
 function scoreMelody(bars: ScoreNote[][]): number {
   const flat: { s: number; bar: number }[] = []
-  bars.forEach((b, bi) => b.forEach((n) => n.step !== null && flat.push({ s: n.step, bar: bi })))
+  // タイの続きの音符は同じ音の延長なので、旋律の動きとしては数えない
+  let continued = false
+  bars.forEach((b, bi) =>
+    b.forEach((n) => {
+      if (n.step !== null && !continued) flat.push({ s: n.step, bar: bi })
+      continued = n.step !== null && !!n.tie
+    }),
+  )
   const steps = flat.map((f) => f.s)
   const n = steps.length
   let score = 0
@@ -441,7 +511,7 @@ function sampleOnce(rng: Rng, level: Level, mode: Mode, meter: Meter): ScoreNote
   // 拍子と難易度に合う動機を選ぶ。中級は、シンコペーションか三連符を含む動機を主題にする。
   // 上級は、十六分音符を含む動機を主題にし、後半(対照楽節)には他の特徴的な動機も使う
   const set = MOTIF_SETS[meter.id]
-  const characteristic: [Motif, number][] = [...set.syncopated, ...set.triplet]
+  const characteristic: [Motif, number][] = [...set.syncopated, ...set.triplet, ...set.tied]
   const basicHalf = set.basic.map(([m, w]): [Motif, number] => [m, w * 0.5])
   let theme: [Motif, number][]
   let pool: [Motif, number][]
@@ -466,15 +536,24 @@ function sampleOnce(rng: Rng, level: Level, mode: Mode, meter: Meter): ScoreNote
     r4 = [...r4.slice(0, -1), last - rest, -rest]
   }
 
-  const r7 = B[0][B[0].length - 1] >= 1 ? B[0] : A[1]
+  // 7小節目は、終止へ向かう音で終わるので、最後の音符がタイで次の小節へ続くリズムは使わない
+  const b0Last = B[0].length - 1
+  // 小節の最後の音符が、タイの続き(同じ高さの延長)になるリズムも避ける(終止の音を選べなくなるため)
+  const b0Ties = tiesOf(B, 0)
+  const useB0 = B[0][b0Last] >= 1 && !b0Ties.includes(b0Last) && !b0Ties.some((t) => t + 1 === b0Last)
+  const r7 = useB0 ? B[0] : A[1]
   const rhythms: Rhythm[] = [A[0], A[1], B[0], r4, A[0], A[1], r7]
+  const ties: number[][] = [
+    tiesOf(A, 0), tiesOf(A, 1), tiesOf(B, 0), tiesOf(B, 1),
+    tiesOf(A, 0), tiesOf(A, 1), useB0 ? tiesOf(B, 0) : tiesOf(A, 1),
+  ]
 
   const st: State = { prev: null, prev2: null, prevRaised: false, pending: null }
-  const first = walk(rng, st, rhythms.slice(0, 2), roots.slice(0, 2), mode, meter, { startSteps: new Set([0, 2, 4]) })
+  const first = walk(rng, st, rhythms.slice(0, 2), ties.slice(0, 2), roots.slice(0, 2), mode, meter, { startSteps: new Set([0, 2, 4]) })
   if (!first) return null
 
   // 前楽節の後半: 平行楽節なら動機を模倣する。終わりは第5音か第2音(半終止)
-  const second = walk(rng, st, rhythms.slice(2, 4), roots.slice(2, 4), mode, meter, {
+  const second = walk(rng, st, rhythms.slice(2, 4), ties.slice(2, 4), roots.slice(2, 4), mode, meter, {
     guide: parallel ? first.intervals : undefined,
     guideWeight: 5,
     endSteps: new Set([1, 4]),
@@ -494,12 +573,12 @@ function sampleOnce(rng: Rng, level: Level, mode: Mode, meter: Meter): ScoreNote
     st.pending = null
     third = { bars, intervals: first.intervals }
   } else {
-    third = walk(rng, st, rhythms.slice(4, 6), roots.slice(4, 6), mode, meter, { guide: first.intervals, guideWeight: 6 })
+    third = walk(rng, st, rhythms.slice(4, 6), ties.slice(4, 6), roots.slice(4, 6), mode, meter, { guide: first.intervals, guideWeight: 6 })
   }
   if (!third) return null
 
   // 終止の前: 最後の主音へ順次進行で解決する音(第2音か導音)で止まる
-  const fourth = walk(rng, st, rhythms.slice(6, 7), roots.slice(6, 7), mode, meter, {
+  const fourth = walk(rng, st, rhythms.slice(6, 7), ties.slice(6, 7), roots.slice(6, 7), mode, meter, {
     guide: parallel ? second.intervals : undefined,
     guideWeight: 2,
     endSteps: new Set([1, -1, 6]),
@@ -522,9 +601,10 @@ function pickKey(rng: Rng, level: Level): KeyInfo {
   return keys[Math.floor(rng() * keys.length)]
 }
 
-/** 初級・中級は4/4。上級は4/4・3/4・6/8から選ぶ */
+/** 初級は4/4。中級は4/4と3/4、上級は4/4・3/4・6/8から選ぶ */
 function pickMeter(rng: Rng, level: Level): Meter {
-  if (level !== 'advanced') return METERS['4/4']
+  if (level === 'beginner') return METERS['4/4']
+  if (level === 'intermediate') return METERS[weighted<MeterId>(rng, [['4/4', 0.65], ['3/4', 0.35]])]
   return METERS[weighted<MeterId>(rng, [['4/4', 0.4], ['3/4', 0.3], ['6/8', 0.3]])]
 }
 

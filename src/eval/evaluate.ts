@@ -1,5 +1,5 @@
 import type { PitchFrame } from '../audio/mic'
-import { noteMidi, type Score } from '../music/score'
+import { noteMidi, soundedNotes, type Score } from '../music/score'
 import { NOTE_NAMES_JA } from '../pitch'
 
 export interface EvalParams {
@@ -26,6 +26,8 @@ export interface ExpectedNote {
   beats: number
   start: number
   dur: number
+  /** タイで結ばれた、続きの音符の位置(この音符の長さに含む) */
+  cont: { bar: number; index: number }[]
 }
 
 /** 聞き取れた1つの音(同じ高さが続く区間) */
@@ -57,6 +59,8 @@ export interface NoteVerdict {
   restBroken: boolean
   /** 同じ高さの連打が1つの音にまとまって聞こえ、区切りを確かめられなかった(正解扱い) */
   merged: boolean
+  /** タイの続きの音符(先頭の音符の結果を写したもの。点数には数えない) */
+  tiedCont: boolean
 }
 
 export interface Summary {
@@ -206,20 +210,39 @@ export function buildExpected(score: Score, p: Pick<EvalParams, 'tempo' | 't0' |
   const spb = 60 / p.tempo
   const { beatLen, countIn } = score.meter
   const bars0 = p.t0 + countIn * spb // カウントインのあと
+  // タイで結ばれた音符は1つの音として扱う(先頭の音符で発音し、長さは合計)。続きの音符は期待に含めない
+  const heads = new Map(soundedNotes(score).map((n) => [`${n.bar}:${n.index}`, n]))
   const out: ExpectedNote[] = []
   score.bars.forEach((bar, b) => {
-    let pos = 0
+    let pos = b * score.meter.barLen
     bar.forEach((n, i) => {
-      out.push({
-        bar: b,
-        index: i,
-        isRest: n.step === null,
-        midi: n.step === null ? null : noteMidi(score, { step: n.step, alter: n.alter }) + p.transpose,
-        beats: n.beats,
-        // 音符の長さ・位置は4分音符=1の単位。メトロノームの1拍(beatLen)で割って秒にする
-        start: bars0 + (b * score.beatsPerBar + pos / beatLen) * spb,
-        dur: (n.beats / beatLen) * spb,
-      })
+      // 音符の長さ・位置は4分音符=1の単位。メトロノームの1拍(beatLen)で割って秒にする
+      if (n.step === null) {
+        out.push({
+          bar: b,
+          index: i,
+          isRest: true,
+          midi: null,
+          beats: n.beats,
+          start: bars0 + (pos / beatLen) * spb,
+          dur: (n.beats / beatLen) * spb,
+          cont: [],
+        })
+      } else {
+        const h = heads.get(`${b}:${i}`)
+        if (h) {
+          out.push({
+            bar: b,
+            index: i,
+            isRest: false,
+            midi: noteMidi(score, h) + p.transpose,
+            beats: h.beats,
+            start: bars0 + (h.pos / beatLen) * spb,
+            dur: (h.beats / beatLen) * spb,
+            cont: h.cont,
+          })
+        }
+      }
       pos += n.beats
     })
   })
@@ -368,7 +391,14 @@ export function evaluate(score: Score, frames: PitchFrame[], p: EvalParams): Eva
     else if (next?.isRest && seg.end > e.start + e.dur + 0.4 * spb) v.duration = 'long'
   })
 
-  const flat = verdicts.flat().filter((v) => !v.isRest)
+  // タイの続きの音符には、先頭の音符と同じ結果を写す
+  for (const e of expected) {
+    if (e.cont.length === 0) continue
+    const head = verdicts[e.bar][e.index]
+    for (const c of e.cont) verdicts[c.bar][c.index] = { ...head, tiedCont: true }
+  }
+
+  const flat = verdicts.flat().filter((v) => !v.isRest && !v.tiedCont)
   const summary: Summary = {
     noteCount: flat.length,
     pitchOk: flat.filter((v) => v.pitchOk).length,
@@ -397,5 +427,6 @@ function emptyVerdict(): NoteVerdict {
     duration: null,
     restBroken: false,
     merged: false,
+    tiedCont: false,
   }
 }

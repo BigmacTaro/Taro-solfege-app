@@ -2,10 +2,12 @@ import { useState } from 'react'
 import type { Settings } from './useSettings'
 
 /** 画面上部に常に表示するマイク感度。細かいマイク設定は「マイク設定」ボタンで開く */
-export function Header({ s, locked }: { s: Settings; locked: boolean }) {
+export function Header({ s, locked, onReset }: { s: Settings; locked: boolean; onReset: () => Promise<void> }) {
   const [open, setOpen] = useState(false)
+  const [resetMsg, setResetMsg] = useState('')
   return (
     <header className="topbar">
+      <div className="reloadnote">動作がおかしくなったらブラウザをリロードしてください</div>
       <div className="topbar-row">
         <label className="sens">
           <span className="lbl">
@@ -63,6 +65,19 @@ export function Header({ s, locked }: { s: Settings; locked: boolean }) {
               onChange={(e) => s.setLatencyMs(Number(e.target.value))}
             />
           </label>
+          <div className="resetrow">
+            <button
+              className="secondary"
+              onClick={async () => {
+                setResetMsg('リセット中…')
+                await onReset()
+                setResetMsg('リセットしました。もう一度お試しください。')
+              }}
+            >
+              🔧 音声をリセット
+            </button>
+            <span className="muted small">音が出ない・課題が始まらないときに押してください。{resetMsg && <b> {resetMsg}</b>}</span>
+          </div>
           <details className="adv">
             <summary>上級者モード</summary>
             <label>

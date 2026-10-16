@@ -322,3 +322,15 @@ button.start:disabled { box-shadow: none; }
 .scoreinfo { line-height: 1.25; }
 .mannerhint { margin: 0 0 2px; line-height: 1.3; }
 .tempo-row { margin: 2px 0; }
+
+.resetrow { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+.resetrow button { min-height: 38px; padding: 4px 12px; font-size: 0.95rem; }
+
+/* 一番上の注意書き(赤字・小さく) */
+.reloadnote { color: var(--bad); font-size: 0.7rem; font-weight: 600; text-align: center; line-height: 1.2; margin: -2px 0 2px; }
+
+/* 縦幅の調整(赤字の注意書きを足した分) */
+.tabs { margin: 2px 0 6px; }
+.startcard { margin: 3px 0; }
+.mannerhint { font-size: 0.8rem; }
+.scorebar { margin: 6px 0 2px; }
