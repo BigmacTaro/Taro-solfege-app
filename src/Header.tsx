@@ -1,16 +1,15 @@
 import { useState } from 'react'
-import { INSTRUMENTS } from './instruments'
 import type { Settings } from './useSettings'
 
-/** 画面上部に常に表示する、マイク感度と楽器の設定。細かい項目は歯車で開く */
+/** 画面上部に常に表示するマイク感度。細かいマイク設定は「マイク設定」ボタンで開く */
 export function Header({ s, locked }: { s: Settings; locked: boolean }) {
   const [open, setOpen] = useState(false)
   return (
     <header className="topbar">
       <div className="topbar-row">
         <label className="sens">
-          <span>
-            <i className="emoji">🎤</i>感度
+          <span className="lbl">
+            <i className="emoji">🎤</i>マイク感度
           </span>
           <input
             type="range"
@@ -23,27 +22,8 @@ export function Header({ s, locked }: { s: Settings; locked: boolean }) {
           />
           <b>×{s.mic.gain.toFixed(1)}</b>
         </label>
-        <select
-          className="inst"
-          value={s.instrument.id}
-          disabled={locked}
-          onChange={(e) => s.setInstrumentId(e.target.value)}
-          aria-label="楽器"
-        >
-          {INSTRUMENTS.map((i) => (
-            <option key={i.id} value={i.id}>
-              {i.short}
-            </option>
-          ))}
-        </select>
-        <button
-          className="secondary icon"
-          onClick={() => setOpen(!open)}
-          aria-expanded={open}
-          aria-label="詳細設定"
-          title="詳細設定"
-        >
-          ⚙
+        <button className="secondary gear" onClick={() => setOpen(!open)} aria-expanded={open}>
+          ⚙ マイク設定 {open ? '▲' : '▼'}
         </button>
       </div>
       {open && (
