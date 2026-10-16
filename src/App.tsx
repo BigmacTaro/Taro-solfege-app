@@ -1,269 +1,106 @@
 import { useEffect, useRef, useState } from 'react'
 import * as Tone from 'tone'
-import { detectPitch, freqToNote, type NoteInfo } from './pitch'
+import { playScore, type BeatInfo, type PlayHandle } from './audio/player'
+import { load, save } from './storage'
+import { PitchLab } from './PitchLab'
+import { ScoreView } from './ScoreView'
+import { generateScore } from './music/generator'
 
-const HISTORY_SEC = 6
-const MIDI_MIN = 36 // C2
-const MIDI_MAX = 84 // C6
-
-interface Sample {
-  t: number
-  midi: number | null
-}
+type Tab = 'score' | 'pitch'
 
 export function App() {
-  const [running, setRunning] = useState(false)
-  const [error, setError] = useState('')
-  const [note, setNote] = useState<NoteInfo | null>(null)
-  const [freq, setFreq] = useState(0)
-  const [level, setLevel] = useState(0)
-  const [noteLang, setNoteLang] = useState<'ja' | 'en'>('ja')
-  const [gain, setGain] = useState(() => load('gain', 1))
-  const [agc, setAgc] = useState(() => load('agc', true))
-  const [ns, setNs] = useState(() => load('ns', false))
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
-  const [deviceId, setDeviceId] = useState('')
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const stopRef = useRef<(() => void) | null>(null)
-  const gainNodeRef = useRef<GainNode | null>(null)
+  const [tab, setTab] = useState<Tab>('score')
+  const [score, setScore] = useState(() => generateScore())
+  const [tempo, setTempo] = useState(() => load('tempo', 80))
+  const [click, setClick] = useState(() => load('click', true))
+  const [playing, setPlaying] = useState<'melody' | 'metronome' | null>(null)
+  const [status, setStatus] = useState('')
+  const handleRef = useRef<PlayHandle | null>(null)
 
-  useEffect(() => () => stopRef.current?.(), [])
-  useEffect(() => {
-    if (gainNodeRef.current) gainNodeRef.current.gain.value = gain
-    save('gain', gain)
-  }, [gain])
-  useEffect(() => save('agc', agc), [agc])
-  useEffect(() => save('ns', ns), [ns])
+  useEffect(() => save('tempo', tempo), [tempo])
+  useEffect(() => save('click', click), [click])
+  useEffect(() => () => handleRef.current?.stop(), [])
 
-  const start = async () => {
-    setError('')
-    try {
-      // echoCancellation は常に切る。AGC/ノイズ抑制は端末によって効き方が違うので設定で切り替える
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: ns,
-          autoGainControl: agc,
-          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-        },
-      })
-      // 許可後でないとデバイス名が取れない
-      const all = await navigator.mediaDevices.enumerateDevices()
-      setDevices(all.filter((d) => d.kind === 'audioinput'))
-      const ctx = new AudioContext()
-      await ctx.resume()
-      const source = ctx.createMediaStreamSource(stream)
-      const gainNode = ctx.createGain()
-      gainNode.gain.value = gain
-      gainNodeRef.current = gainNode
-      const analyser = ctx.createAnalyser()
-      analyser.fftSize = 4096
-      source.connect(gainNode)
-      gainNode.connect(analyser)
-      const buf = new Float32Array(analyser.fftSize)
-      const history: Sample[] = []
-      let raf = 0
-      let lastMidi: number | null = null
+  const stop = () => handleRef.current?.stop()
 
-      const tick = () => {
-        analyser.getFloatTimeDomainData(buf)
-        let sum = 0
-        for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
-        setLevel(Math.sqrt(sum / buf.length))
-
-        const r = detectPitch(buf, ctx.sampleRate)
-        const now = performance.now() / 1000
-        if (r) {
-          const n = freqToNote(r.freq)
-          lastMidi = n.midi
-          setNote(n)
-          setFreq(r.freq)
-        } else {
-          lastMidi = null
-          setNote(null)
-        }
-        history.push({ t: now, midi: lastMidi })
-        while (history.length && now - history[0].t > HISTORY_SEC) history.shift()
-        drawHistory(canvasRef.current, history, now)
-        raf = requestAnimationFrame(tick)
-      }
-      tick()
-
-      stopRef.current = () => {
-        cancelAnimationFrame(raf)
-        stream.getTracks().forEach((t) => t.stop())
-        void ctx.close()
-        stopRef.current = null
-      }
-      setRunning(true)
-    } catch (e) {
-      setError(
-        e instanceof Error && e.name === 'NotAllowedError'
-          ? 'マイクの使用が許可されていません。ブラウザの設定で許可してください。'
-          : `マイクを開始できませんでした: ${e instanceof Error ? e.message : String(e)}`,
-      )
-    }
-  }
-
-  const stop = () => {
-    stopRef.current?.()
-    setRunning(false)
-    setNote(null)
-    setLevel(0)
-  }
-
-  // ブラウザの仕様上、音はユーザー操作の後でないと鳴らせない
-  const playRef = async (name: string) => {
+  const play = async (kind: 'melody' | 'metronome') => {
+    stop()
+    // ブラウザの仕様上、音はユーザー操作の後でないと鳴らせない
     await Tone.start()
-    const synth = new Tone.Synth().toDestination()
-    synth.triggerAttackRelease(name, '1', undefined, 0.6)
-    setTimeout(() => synth.dispose(), 2000)
+    setPlaying(kind)
+    const onBeat = (i: BeatInfo) =>
+      setStatus(i.phase === 'countin' ? `カウントイン ${i.beat + 1}` : `${i.bar + 1}小節目 ${i.beat + 1}拍`)
+    handleRef.current = playScore(score, {
+      tempo,
+      melody: kind === 'melody',
+      click: kind === 'metronome' || click,
+      onBeat,
+      onEnd: () => {
+        handleRef.current = null
+        setPlaying(null)
+        setStatus('')
+      },
+    })
   }
 
-  const cents = note?.cents ?? 0
-  const inTolerance = Math.abs(cents) <= 50
+  const changeScore = () => {
+    stop()
+    setScore(generateScore())
+  }
 
   return (
     <main>
-      <h1>ピッチ検出の試作</h1>
-      <p className="muted">マイクに向かって歌う/演奏すると、音名とずれ(セント)が出ます。</p>
-
-      <div className="row">
-        {running ? (
-          <button onClick={stop}>停止</button>
-        ) : (
-          <button onClick={start}>マイク開始</button>
-        )}
-        <label>
-          音名{' '}
-          <select value={noteLang} onChange={(e) => setNoteLang(e.target.value as 'ja' | 'en')}>
-            <option value="ja">ドレミ</option>
-            <option value="en">CDE</option>
-          </select>
-        </label>
+      <h1>ソルフェージュ自習</h1>
+      <div className="tabs" role="tablist">
+        <button role="tab" aria-selected={tab === 'score'} onClick={() => setTab('score')}>
+          楽譜
+        </button>
+        <button role="tab" aria-selected={tab === 'pitch'} onClick={() => setTab('pitch')}>
+          ピッチ試作
+        </button>
       </div>
-      {error && <p className="error">{error}</p>}
 
-      <details className="settings" open>
-        <summary>マイク設定</summary>
-        <label className="field">
-          感度(増幅): ×{gain.toFixed(1)}
-          <input
-            type="range"
-            min={1}
-            max={20}
-            step={0.5}
-            value={gain}
-            onChange={(e) => setGain(Number(e.target.value))}
-          />
-        </label>
-        <label>
-          <input type="checkbox" checked={agc} disabled={running} onChange={(e) => setAgc(e.target.checked)} />{' '}
-          自動音量調整(AGC)
-        </label>
-        <label>
-          <input type="checkbox" checked={ns} disabled={running} onChange={(e) => setNs(e.target.checked)} />{' '}
-          ノイズ抑制
-        </label>
-        {devices.length > 1 && (
+      {tab === 'score' ? (
+        <section>
+          <p className="muted">初級: ハ長調・4/4・八分音符まで。</p>
+          <div className="row">
+            <button onClick={changeScore}>新しい楽譜</button>
+            <span className="muted small">番号: {score.seed}</span>
+          </div>
           <label className="field">
-            入力デバイス
-            <select value={deviceId} disabled={running} onChange={(e) => setDeviceId(e.target.value)}>
-              <option value="">既定</option>
-              {devices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || d.deviceId.slice(0, 8)}
-                </option>
-              ))}
-            </select>
+            テンポ: ♩={tempo}
+            <input
+              type="range"
+              min={40}
+              max={180}
+              step={1}
+              value={tempo}
+              disabled={playing !== null}
+              onChange={(e) => setTempo(Number(e.target.value))}
+            />
           </label>
-        )}
-        <p className="muted small">AGC・ノイズ抑制・入力デバイスは、停止してから変更してください。</p>
-      </details>
-
-      <div className="readout" aria-live="off">
-        <div className="note">
-          {note ? `${noteLang === 'ja' ? note.ja : note.en}${note.octave}` : '—'}
-        </div>
-        <div className={`cents ${note && !inTolerance ? 'bad' : ''}`}>
-          {note ? `${cents >= 0 ? '+' : ''}${cents.toFixed(0)} セント` : '音が検出されていません'}
-        </div>
-        <div className="meter">
-          <div className="center" />
-          {note && <div className="needle" style={{ left: `${50 + cents}%` }} />}
-        </div>
-        <div className="muted small">
-          {note ? `${freq.toFixed(1)} Hz` : ''} 音量 {(level * 100).toFixed(0)}
-        </div>
-      </div>
-
-      <canvas ref={canvasRef} className="history" width={640} height={240} />
-
-      <h2>基準音を鳴らす</h2>
-      <div className="row">
-        {['C4', 'E4', 'G4', 'A4'].map((n) => (
-          <button key={n} onClick={() => playRef(n)}>
-            {n}
-          </button>
-        ))}
-      </div>
+          <div className="row">
+            {playing ? (
+              <button onClick={stop}>■ 停止</button>
+            ) : (
+              <>
+                <button onClick={() => play('melody')}>▶ お手本を聴く</button>
+                <button onClick={() => play('metronome')}>♩ メトロノームのみ</button>
+              </>
+            )}
+            <span className="status" aria-live="off">
+              {status}
+            </span>
+          </div>
+          <label>
+            <input type="checkbox" checked={click} disabled={playing !== null} onChange={(e) => setClick(e.target.checked)} />{' '}
+            お手本の再生中もクリックを鳴らす
+          </label>
+          <ScoreView score={score} />
+        </section>
+      ) : (
+        <PitchLab />
+      )}
     </main>
   )
-}
-
-function load<T>(key: string, fallback: T): T {
-  try {
-    const v = localStorage.getItem(`solfege.${key}`)
-    return v === null ? fallback : (JSON.parse(v) as T)
-  } catch {
-    return fallback
-  }
-}
-
-function save(key: string, value: unknown) {
-  try {
-    localStorage.setItem(`solfege.${key}`, JSON.stringify(value))
-  } catch {
-    // 保存できない環境では設定が残らないだけ
-  }
-}
-
-function drawHistory(canvas: HTMLCanvasElement | null, history: Sample[], now: number) {
-  const g = canvas?.getContext('2d')
-  if (!canvas || !g) return
-  const { width: w, height: h } = canvas
-  const dark = window.matchMedia('(prefers-color-scheme: dark)').matches
-  g.clearRect(0, 0, w, h)
-  g.fillStyle = dark ? '#1c1c1e' : '#f4f4f6'
-  g.fillRect(0, 0, w, h)
-
-  const y = (m: number) => h - ((m - MIDI_MIN) / (MIDI_MAX - MIDI_MIN)) * h
-  g.font = '12px system-ui'
-  g.textAlign = 'left'
-  for (let m = MIDI_MIN; m <= MIDI_MAX; m++) {
-    if (m % 12 !== 0) continue
-    g.strokeStyle = dark ? '#3a3a3c' : '#d0d0d4'
-    g.beginPath()
-    g.moveTo(0, y(m))
-    g.lineTo(w, y(m))
-    g.stroke()
-    g.fillStyle = dark ? '#8e8e93' : '#6c6c70'
-    g.fillText(`C${m / 12 - 1}`, 4, y(m) - 3)
-  }
-
-  g.strokeStyle = '#0a84ff'
-  g.lineWidth = 2
-  g.beginPath()
-  let pen = false
-  for (const s of history) {
-    if (s.midi === null) {
-      pen = false
-      continue
-    }
-    const x = w - ((now - s.t) / HISTORY_SEC) * w
-    if (pen) g.lineTo(x, y(s.midi))
-    else g.moveTo(x, y(s.midi))
-    pen = true
-  }
-  g.stroke()
 }
