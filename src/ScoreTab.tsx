@@ -5,7 +5,7 @@ import { playScore, type BeatInfo, type PlayHandle } from './audio/player'
 import { evaluate } from './eval/evaluate'
 import { soundingNameOfWrittenC } from './instruments'
 import { generateScore } from './music/generator'
-import type { Score } from './music/score'
+import type { Level, Score } from './music/score'
 import { ResultTimeline } from './ResultTimeline'
 import { ScoreView } from './ScoreView'
 import { load, save } from './storage'
@@ -32,11 +32,14 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 const TAIL_MS = 800
 
 export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean) => void }) {
-  const [score, setScore] = useState(() => generateScore())
+  const [level, setLevel] = useState<Level>(() => (load<string>('level', 'beginner') === 'intermediate' ? 'intermediate' : 'beginner'))
+  const [score, setScore] = useState(() => generateScore(undefined, level))
   const [tempo, setTempo] = useState(() => load('tempo', 80))
   const [click, setClick] = useState(() => load('click', true))
   const [mode, setMode] = useState<Mode>('idle')
   const [status, setStatus] = useState('')
+  /** 今鳴っている拍(メトロノームの可視化用)。鳴っていなければ null */
+  const [beat, setBeat] = useState<BeatInfo | null>(null)
   const [error, setError] = useState('')
   const [run, setRun] = useState<Run | null>(null)
 
@@ -49,6 +52,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
 
   useEffect(() => save('tempo', tempo), [tempo])
   useEffect(() => save('click', click), [click])
+  useEffect(() => save('level', level), [level])
   useEffect(() => micRef.current?.setGain(s.mic.gain), [s.mic.gain])
   useEffect(() => onLock(mode === 'practice' || mode === 'judging'), [mode, onLock])
   useEffect(() => () => halt(), [])
@@ -69,10 +73,10 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
     halt()
     setMode('idle')
     setStatus('')
+    setBeat(null)
   }
 
-  const onBeat = (i: BeatInfo) =>
-    setStatus(i.phase === 'countin' ? `カウント ${i.beat + 1}` : `${i.bar + 1}小節目`)
+  const onBeat = (i: BeatInfo) => setBeat(i)
 
   const playModel = async () => {
     halt()
@@ -91,6 +95,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
         handleRef.current = null
         setMode('idle')
         setStatus('')
+        setBeat(null)
       },
     })
   }
@@ -136,6 +141,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
         if (runIdRef.current !== myRun) return
         // 最後の音の余韻まで録音してから判定する
         setMode('judging')
+        setBeat(null)
         setStatus('判定中…')
         timerRef.current = setTimeout(() => {
           micRef.current?.stop()
@@ -153,7 +159,16 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
   const changeScore = () => {
     stop()
     setRun(null)
-    setScore(generateScore())
+    setScore(generateScore(undefined, level))
+  }
+
+  /** 初級・中級を切り替え、そのレベルで楽譜を作り直す */
+  const changeLevel = (next: Level) => {
+    if (next === level) return
+    stop()
+    setRun(null)
+    setLevel(next)
+    setScore(generateScore(undefined, next))
   }
 
   const result = useMemo(
@@ -194,7 +209,9 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
           </button>
         )}
         <div className="notice-line" aria-live="polite">
-          {status ? (
+          {beat ? (
+            <BeatDots info={beat} perBar={score.beatsPerBar} />
+          ) : status ? (
             <span className="status">{status}</span>
           ) : (
             <span className="notice">
@@ -218,9 +235,24 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
             <button className="secondary" onClick={playModel} disabled={busy}>
               ▶ お手本を聴く
             </button>
+            <div className="seg" role="group" aria-label="難易度">
+              {(['beginner', 'intermediate'] as Level[]).map((l) => (
+                <button
+                  key={l}
+                  className={l === level ? 'on' : ''}
+                  aria-pressed={l === level}
+                  disabled={busy}
+                  onClick={() => changeLevel(l)}
+                >
+                  {l === 'beginner' ? '初級' : '中級'}
+                </button>
+              ))}
+            </div>
           </>
         )}
       </div>
+
+      <p className="muted small mannerhint">📱 スマホの場合は、マナーモード(消音)をOFFにしてください。</p>
 
       <div className="tempo-row">
         <label htmlFor="tempo">テンポ ♩={tempo}</label>
@@ -242,14 +274,15 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
 
       {transposing && (
         <p className="info">
-          {inst.name}: 楽譜は記譜(読む音)のまま表示します。楽譜のドは、実音では
-          <b>{soundingNameOfWrittenC(inst)}</b>で鳴ります。
+          {inst.name}: 楽譜は記譜(読む音)のまま表示します。実音は記譜より{inst.interval}鳴ります
+          (楽譜のドは、実音では<b>{soundingNameOfWrittenC(inst)}</b>)。
         </p>
       )}
 
       <ScoreView score={run && result ? run.score : score} verdicts={result?.verdicts} />
       <p className="muted small seedline">
-        初級: ハ長調・4/4 / 楽譜の番号: {run ? run.score.seed : score.seed}
+        {(run ? run.score : score).level === 'intermediate' ? '中級' : '初級'}: {(run ? run.score : score).key.ja}・4/4 /
+        楽譜の番号: {run ? run.score.seed : score.seed}
       </p>
 
       {run && result && (
@@ -310,5 +343,18 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
         </div>
       )}
     </section>
+  )
+}
+
+/** メトロノームの可視化: 拍の数だけ丸を並べ、今の拍を光らせる(1拍目は大きい丸) */
+function BeatDots({ info, perBar }: { info: BeatInfo; perBar: number }) {
+  const label = info.phase === 'countin' ? 'カウント' : `${info.bar + 1}小節目`
+  return (
+    <div className={`beatdots ${info.phase}`} aria-label={`${label} ${info.beat + 1}拍目`}>
+      <span className="beatlabel">{label}</span>
+      {Array.from({ length: perBar }, (_, i) => (
+        <i key={i} className={`dot${i === 0 ? ' first' : ''}${i === info.beat ? ' on' : ''}`} />
+      ))}
+    </div>
   )
 }

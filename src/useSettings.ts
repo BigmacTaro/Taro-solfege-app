@@ -3,6 +3,9 @@ import { findInstrument, type Instrument } from './instruments'
 import type { MicSettings } from './audio/mic'
 import { load, save } from './storage'
 
+/** マイク感度(増幅)の上限。以前の保存値がこれを超えていても、ここに収める */
+export const MAX_GAIN = 5
+
 export interface Settings {
   mic: MicSettings
   /** 打ち込み・発音の遅れの補正(ミリ秒)。マイク入力やBluetoothの遅延を打ち消す */
@@ -24,7 +27,7 @@ export interface Settings {
 
 /** マイク・楽器の設定。端末に保存する */
 export function useSettings(): Settings {
-  const [gain, setGain] = useState(() => load('gain', 1))
+  const [gain, setGain] = useState(() => Math.min(MAX_GAIN, Math.max(1, load('gain', 1))))
   const [agc, setAgc] = useState(() => load('agc', true))
   const [ns, setNs] = useState(() => load('ns', false))
   const [deviceId, setDeviceId] = useState('')

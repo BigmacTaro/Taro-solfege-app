@@ -14,7 +14,7 @@ export function Header({ s, locked }: { s: Settings; locked: boolean }) {
           <input
             type="range"
             min={1}
-            max={20}
+            max={5}
             step={0.5}
             value={s.mic.gain}
             onChange={(e) => s.setGain(Number(e.target.value))}

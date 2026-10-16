@@ -1,7 +1,20 @@
 import { useEffect, useRef } from 'react'
-import { Annotation, Barline, Beam, Dot, Formatter, Renderer, Stave, StaveNote, Voice } from 'vexflow'
+import {
+  Accidental,
+  Annotation,
+  Barline,
+  Beam,
+  Dot,
+  Formatter,
+  Fraction,
+  Renderer,
+  Stave,
+  StaveNote,
+  Tuplet,
+  Voice,
+} from 'vexflow'
 import type { NoteVerdict } from './eval/evaluate'
-import { beatsToVexDuration, stepToVexKey, type Score } from './music/score'
+import { beatsToVexDuration, isTriplet, keySignatureCount, noteVexKey, type Score } from './music/score'
 
 // VexFlowの五線は、指定した位置より約40px下から始まる(上の余白を含むため)。その分を差し引く
 const STAVE_TOP = -20
@@ -77,7 +90,7 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
   const margin = 8
   const usable = width - margin * 2
   // 段頭は音部記号・調号(・拍子記号)の分だけ広げる
-  const headExtra = (row: number) => 40 + (row === 0 ? 24 : 0)
+  const headExtra = (row: number) => 40 + keySignatureCount(score.key) * 11 + (row === 0 ? 24 : 0)
   const baseWidth = (row: number) => (usable - headExtra(row)) / barsPerRow
 
   score.bars.forEach((bar, index) => {
@@ -91,6 +104,7 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
     const stave = new Stave(x, y, w)
     if (col === 0) {
       stave.addClef('treble')
+      stave.addKeySignature(score.key.vex)
       if (row === 0) stave.addTimeSignature(`${score.beatsPerBar}/4`)
       stave.setMeasure(index + 1)
     }
@@ -102,7 +116,7 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
       const note =
         n.step === null
           ? new StaveNote({ keys: ['b/4'], duration: `${duration}r` })
-          : new StaveNote({ keys: [stepToVexKey(n.step)], duration, autoStem: true })
+          : new StaveNote({ keys: [noteVexKey(score, { step: n.step, alter: n.alter })], duration, autoStem: true })
       if (duration.endsWith('d')) Dot.buildAndAttach([note], { all: true })
 
       const v = verdicts?.[index]?.[i]
@@ -122,11 +136,24 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
       return note
     })
 
+    // 三連符は3つ1組(八分三連=1拍、四分三連=2拍)でくくる
+    const tuplets: Tuplet[] = []
+    for (let i = 0; i < bar.length; ) {
+      if (isTriplet(bar[i].beats)) {
+        tuplets.push(new Tuplet(notes.slice(i, i + 3), { numNotes: 3, notesOccupied: 2 }))
+        i += 3
+      } else i++
+    }
+
     const voice = new Voice({ numBeats: score.beatsPerBar, beatValue: 4 })
     voice.addTickables(notes)
-    const beams = Beam.generateBeams(notes)
+    // 調号に含まれる音には臨時記号を付けず、それ以外(短調の導音など)には付ける
+    Accidental.applyAccidentals([voice], score.key.vex)
+    // 連桁は拍ごと(4分音符の長さ)にまとめる
+    const beams = Beam.generateBeams(notes, { groups: [new Fraction(1, 4)] })
     new Formatter().joinVoices([voice]).format([voice], stave.getNoteEndX() - stave.getNoteStartX() - 16)
     voice.draw(ctx, stave)
     beams.forEach((b) => b.setContext(ctx).draw())
+    tuplets.forEach((t) => t.setContext(ctx).draw())
   })
 }
