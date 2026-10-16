@@ -393,3 +393,21 @@ button.infobtn { min-width: 26px; padding: 0 6px; font-size: 0.9rem; }
 .about li { margin: 3px 0; }
 .about-close { display: block; width: 100%; margin-top: 14px; min-height: 46px; font-size: 1.05rem; }
 .about-note { text-align: center; margin-top: 8px; }
+
+/* 説明ウィンドウを小さく: 実際に見える高さ(dvh)に収め、収まらなければ中でスクロールする */
+.about-backdrop { padding: 10px; overflow-y: auto; }
+.about {
+  max-height: calc(100vh - 20px);
+  max-height: calc(100dvh - 20px);
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 0.82rem;
+}
+.about h2 { margin: 0 0 4px; font-size: 1.05rem; }
+.about h3 { margin: 8px 0 2px; font-size: 0.9rem; }
+.about p { margin: 4px 0; line-height: 1.4; }
+.about ol, .about ul { margin: 2px 0; padding-left: 1.2em; line-height: 1.4; }
+.about li { margin: 1px 0; }
+.about-close { margin-top: 8px; min-height: 38px; font-size: 0.95rem; }
+.about-note { margin-top: 4px; font-size: 0.72rem; }
+.about { box-sizing: border-box; }
