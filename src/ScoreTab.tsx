@@ -424,6 +424,7 @@ export function ScoreTab({ s, onLock, resetTick }: { s: Settings; onLock: (locke
               </li>
               {result.summary.missed > 0 && <li>聞こえず {result.summary.missed}</li>}
               {result.summary.extra > 0 && <li>余計な音 {result.summary.extra}</li>}
+              {result.summary.slips > 0 && <li className="muted">ミスタッチ(無視) {result.summary.slips}</li>}
               {result.summary.durationIssues > 0 && <li>長さの指摘 {result.summary.durationIssues}</li>}
               {result.summary.restBroken > 0 && <li>休符 {result.summary.restBroken}</li>}
             </ul>

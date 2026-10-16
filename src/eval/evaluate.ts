@@ -68,8 +68,10 @@ export interface Summary {
   pitchOk: number
   timingOk: number
   missed: number
-  /** 楽譜にない余計な音の数 */
+  /** 楽譜にない余計な音の数(一瞬のミスタッチは含めない) */
   extra: number
+  /** 一瞬だけ別の音が鳴ったミスタッチの数(減点せず、無視した) */
+  slips: number
   durationIssues: number
   restBroken: number
   /** 音高とタイミングの正解率(0〜100) */
@@ -95,6 +97,10 @@ const JUMP_SEMITONES = 0.7
 const JUMP_FRAMES = 3
 const MIN_SEGMENT = 0.06
 const PITCH_TOL_CENTS = 50
+/** ミスタッチ(一瞬だけ別の音が鳴った)とみなす長さの上限: この秒数未満で、近くの期待した音の半分未満 */
+const SLIP_MAX_DUR = 0.15
+/** ミスタッチの前後が同じ高さなら、間に挟まった一瞬の音を飛ばして、前後を1つの音につなげる最大の隙間 */
+const SLIP_BRIDGE_GAP = 0.12
 /** クリック音がマイクに回り込んだものとみなす条件: クリックの後この時間内に始まり、この長さより短い */
 const BLEED_WINDOW = 0.35
 const BLEED_MAX_DUR = 0.12
@@ -250,9 +256,11 @@ export function buildExpected(score: Score, p: Pick<EvalParams, 'tempo' | 't0' |
 }
 
 /** 期待する音(順番どおり)と聞き取れた音(順番どおり)を、ずれが最小になるよう対応づける */
-function matchNotes(notes: ExpectedNote[], segs: Observed[], window: number): number[] {
+function matchNotes(notes: ExpectedNote[], segs: Observed[], window: number, isSlip: boolean[]): number[] {
   const MISS = 1
   const EXTRA = 0.6
+  // ミスタッチの断片は、ほぼ無料で読み飛ばせる(本来の音の代わりに割り当てられないようにする)
+  const EXTRA_SLIP = 0.05
   const N = notes.length
   const M = segs.length
   const dp = Array.from({ length: N + 1 }, () => new Array<number>(M + 1).fill(Infinity))
@@ -266,8 +274,9 @@ function matchNotes(notes: ExpectedNote[], segs: Observed[], window: number): nu
         dp[i + 1][j] = here + MISS
         from[i + 1][j] = 1
       }
-      if (j < M && here + EXTRA < dp[i][j + 1]) {
-        dp[i][j + 1] = here + EXTRA
+      const skip = isSlip[j] ? EXTRA_SLIP : EXTRA
+      if (j < M && here + skip < dp[i][j + 1]) {
+        dp[i][j + 1] = here + skip
         from[i][j + 1] = 2
       }
       if (i < N && j < M) {
@@ -319,11 +328,45 @@ export function evaluate(score: Score, frames: PitchFrame[], p: EvalParams): Eva
   for (let k = 0; k < score.meter.countIn + (p.clickDuringBars ? score.beatsPerBar * score.bars.length : 0); k++) {
     clickTimes.push(p.t0 + k * spb)
   }
-  const observed = segmentFrames(shifted).filter((o) => {
+  const heard = segmentFrames(shifted).filter((o) => {
     const isBleed = o.end - o.onset < BLEED_MAX_DUR && clickTimes.some((c) => o.onset >= c - 0.05 && o.onset <= c + BLEED_WINDOW)
     return !isBleed
   })
-  const matchOf = matchNotes(noteEvents, observed, window)
+
+  // ミスタッチ(一瞬だけ別の音が鳴った): 近くの期待した音の半分に満たない、ごく短い断片。
+  // 音の途中に挟まっていて前後が同じ高さなら、前後を1つの音につなげる。それ以外も、余計な音には数えない
+  // 基準は、その近く(前後0.35秒)にある、最も短い期待音の長さ。速い連打の本物の音をミスタッチと誤認しない
+  const localMinDur = (t: number) => {
+    const near = noteEvents.filter((e) => Math.abs(e.start - t) <= 0.35)
+    if (near.length) return Math.min(...near.map((e) => e.dur))
+    let best = noteEvents[0]
+    for (const e of noteEvents) if (Math.abs(e.start - t) < Math.abs(best.start - t)) best = e
+    return best.dur
+  }
+  const slipLike = (o: Observed) => o.end - o.onset < Math.min(SLIP_MAX_DUR, 0.5 * localMinDur(o.onset))
+  const observed: Observed[] = []
+  for (let k = 0; k < heard.length; k++) {
+    const cur = heard[k]
+    const prev = observed[observed.length - 1]
+    const next = heard[k + 1]
+    if (
+      prev &&
+      next &&
+      slipLike(cur) &&
+      !slipLike(prev) &&
+      cur.onset - prev.end <= SLIP_BRIDGE_GAP &&
+      next.onset - cur.end <= SLIP_BRIDGE_GAP &&
+      Math.abs(fold(prev.midi - next.midi)) <= PITCH_TOL_CENTS / 100
+    ) {
+      // 前後を1つの音につなげる(挟まった一瞬の音は捨てる)
+      prev.end = next.end
+      k++
+      continue
+    }
+    observed.push({ ...cur })
+  }
+  const isSlip = observed.map(slipLike)
+  const matchOf = matchNotes(noteEvents, observed, window, isSlip)
 
   // 同じ高さの連打は、息や舌で区切らないと1つの音にまとまって聞こえる(特に速い連打)。
   // 直前の音と同じ高さで、その音の長さが次の音まで続いているなら、区切りは確かめられないが演奏されたものとみなす
@@ -340,6 +383,18 @@ export function evaluate(score: Score, frames: PitchFrame[], p: EvalParams): Eva
     const seg = observed[j]
     const e = noteEvents[i]
     if (seg.onset <= e.start + tol && seg.end >= e.start + 0.5 * e.dur) mergedInto.set(i, j)
+  }
+
+  // 逆向き: 連打が1つにまとまり、その音が「あとの音符」に割り当てられたとき、前の音符も演奏されたとみなす
+  // (タイミングは、まとまった音の始まりで測る)
+  const mergedFwd = new Map<number, number>()
+  for (let i = 0; i < noteEvents.length - 1; i++) {
+    if (matchOf[i] >= 0 || mergedInto.has(i)) continue
+    const j = matchOf[i + 1]
+    if (j < 0) continue
+    if (noteExpIndex[i + 1] - noteExpIndex[i] !== 1) continue
+    if (Math.abs(fold(noteEvents[i + 1].midi! - noteEvents[i].midi!)) > 1e-6) continue
+    if (Math.abs(observed[j].onset - noteEvents[i].start) <= window) mergedFwd.set(i, j)
   }
 
   const verdicts: NoteVerdict[][] = score.bars.map((b) => b.map(() => emptyVerdict()))
@@ -359,10 +414,22 @@ export function evaluate(score: Score, frames: PitchFrame[], p: EvalParams): Eva
     }
     const noteIdx = ni++
     const merged = matchOf[noteIdx] < 0 ? mergedInto.get(noteIdx) : undefined
-    const j = merged ?? matchOf[noteIdx]
+    const mergedForward = matchOf[noteIdx] < 0 && merged === undefined ? mergedFwd.get(noteIdx) : undefined
+    const j = merged ?? mergedForward ?? matchOf[noteIdx]
     v.expectedMidi = e.midi
     if (j < 0) {
       v.missed = true
+      return
+    }
+    if (mergedForward !== undefined) {
+      // 前の音符が、あとの音符と1つにまとまった: 高さは同じ音。タイミングは、まとまった音の始まりで測る
+      v.merged = true
+      v.centsOff = 100 * fold(observed[j].midi - e.midi!)
+      v.pitchOk = Math.abs(v.centsOff) <= PITCH_TOL_CENTS
+      v.sungName = NOTE_NAMES_JA[((Math.round(observed[j].midi) % 12) + 12) % 12]
+      v.timingErrSec = observed[j].onset - e.start
+      v.timingErrBeats = v.timingErrSec / spb
+      v.timingOk = Math.abs(v.timingErrSec) <= tol
       return
     }
     if (merged !== undefined) {
@@ -404,7 +471,8 @@ export function evaluate(score: Score, frames: PitchFrame[], p: EvalParams): Eva
     pitchOk: flat.filter((v) => v.pitchOk).length,
     timingOk: flat.filter((v) => v.timingOk).length,
     missed: flat.filter((v) => v.missed).length,
-    extra: observed.length - used.size,
+    extra: observed.filter((_, j) => !used.has(j) && !isSlip[j]).length,
+    slips: observed.filter((_, j) => !used.has(j) && isSlip[j]).length,
     durationIssues: flat.filter((v) => v.duration !== null).length,
     restBroken: verdicts.flat().filter((v) => v.restBroken).length,
     percent: 0,

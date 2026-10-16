@@ -212,6 +212,28 @@ const TIED_MOTIFS_68: [Motif, number][] = [
   [[[1, 0.5, 1, 0.5], [1.5, 1.5], [[0, 3]]], 3],
 ]
 
+/**
+ * 上級: 十六分音符・付点のリズム・三連符と、小節をまたぐタイを組み合わせた動機。
+ * 1小節目の最後の音符(拍の裏)が、2小節目の最初の音符とタイで結ばれ、小節の頭に新しい発音がない
+ */
+const TIED_RICH_MOTIFS: [Motif, number][] = [
+  [[[0.5, 0.25, 0.25, 0.75, 0.25, 1, 0.5, 0.5], [1.5, 0.25, 0.25, 0.5, 1.5], [[0, 7]]], 4],
+  [[[0.75, 0.25, T, T, T, 1, 0.5, 0.5], [1, 0.75, 0.25, 2], [[0, 7]]], 4],
+  [[[1, 0.25, 0.25, 0.5, 0.75, 0.25, 0.5, 0.5], [1.5, 0.5, 1, 1], [[0, 7]]], 4],
+  [[[Q, Q, Q, 0.75, 0.25, 0.5, 0.5], [1.5, 0.75, 0.25, 1.5], [[0, 6]]], 3],
+  [[[0.5, 0.25, 0.25, 1, 1, 1], [1, 0.5, 0.25, 0.25, 2], [[0, 5]]], 4],
+  [[[0.75, 0.25, 0.75, 0.25, 1, 0.5, 0.5], [2, 0.75, 0.25, 1], [[0, 6]]], 4],
+]
+const TIED_RICH_MOTIFS_34: [Motif, number][] = [
+  [[[0.5, 0.25, 0.25, 0.75, 0.25, 0.5, 0.5], [1.5, 0.5, 1], [[0, 6]]], 4],
+  [[[T, T, T, 0.75, 0.25, 1], [1, 0.5, 0.25, 0.25, 1], [[0, 5]]], 4],
+  [[[1, 0.5, 0.25, 0.25, 0.5, 0.5], [1.5, 0.5, 1], [[0, 5]]], 4],
+]
+const TIED_RICH_MOTIFS_68: [Motif, number][] = [
+  [[[0.75, 0.25, 0.5, 0.5, 0.5, 0.5], [1.5, 0.25, 0.25, 1], [[0, 5]]], 4],
+  [[[1, 0.25, 0.25, 0.5, 0.5, 0.5], [1.5, 0.5, 1], [[0, 5]]], 4],
+]
+
 /** 拍子ごとの動機の一覧。triplet は6/8にはない */
 interface MotifSet {
   basic: [Motif, number][]
@@ -219,14 +241,16 @@ interface MotifSet {
   triplet: [Motif, number][]
   tied: [Motif, number][]
   sixteenth: [Motif, number][]
+  /** 十六分音符などと、小節をまたぐタイを組み合わせた動機(上級) */
+  tiedRich: [Motif, number][]
   /** カスタム用: 最短が四分音符の動機と、その中のシンコペーション */
   quarter: [Motif, number][]
   quarterSync: [Motif, number][]
 }
 const MOTIF_SETS: Record<MeterId, MotifSet> = {
-  '4/4': { basic: BASIC_MOTIFS, syncopated: SYNCOPATED_MOTIFS, triplet: TRIPLET_MOTIFS, tied: TIED_MOTIFS, sixteenth: SIXTEENTH_MOTIFS, quarter: QUARTER_MOTIFS, quarterSync: QUARTER_SYNC_MOTIFS },
-  '3/4': { basic: BASIC_MOTIFS_34, syncopated: SYNCOPATED_MOTIFS_34, triplet: TRIPLET_MOTIFS_34, tied: TIED_MOTIFS_34, sixteenth: SIXTEENTH_MOTIFS_34, quarter: QUARTER_MOTIFS_34, quarterSync: QUARTER_SYNC_MOTIFS_34 },
-  '6/8': { basic: BASIC_MOTIFS_68, syncopated: SYNCOPATED_MOTIFS_68, triplet: [], tied: TIED_MOTIFS_68, sixteenth: SIXTEENTH_MOTIFS_68, quarter: QUARTER_MOTIFS_68, quarterSync: QUARTER_SYNC_MOTIFS_68 },
+  '4/4': { basic: BASIC_MOTIFS, syncopated: SYNCOPATED_MOTIFS, triplet: TRIPLET_MOTIFS, tied: TIED_MOTIFS, sixteenth: SIXTEENTH_MOTIFS, tiedRich: TIED_RICH_MOTIFS, quarter: QUARTER_MOTIFS, quarterSync: QUARTER_SYNC_MOTIFS },
+  '3/4': { basic: BASIC_MOTIFS_34, syncopated: SYNCOPATED_MOTIFS_34, triplet: TRIPLET_MOTIFS_34, tied: TIED_MOTIFS_34, sixteenth: SIXTEENTH_MOTIFS_34, tiedRich: TIED_RICH_MOTIFS_34, quarter: QUARTER_MOTIFS_34, quarterSync: QUARTER_SYNC_MOTIFS_34 },
+  '6/8': { basic: BASIC_MOTIFS_68, syncopated: SYNCOPATED_MOTIFS_68, triplet: [], tied: TIED_MOTIFS_68, sixteenth: SIXTEENTH_MOTIFS_68, tiedRich: TIED_RICH_MOTIFS_68, quarter: QUARTER_MOTIFS_68, quarterSync: QUARTER_SYNC_MOTIFS_68 },
 }
 
 /** 最後の小節(主音で終わる) */
@@ -526,7 +550,10 @@ function rhythmBonus(bars: ScoreNote[][]): number {
   )
 }
 
-function scoreMelody(bars: ScoreNote[][], richness = 0): number {
+/** 小節をまたぐタイ(小節の最後の音符が、次の小節の最初の音符と結ばれている)の数 */
+const barlineTies = (bars: ScoreNote[][]) => bars.filter((b) => b.length > 0 && b[b.length - 1].tie).length
+
+function scoreMelody(bars: ScoreNote[][], richness = 0, tieWeight = 0): number {
   const flat: { s: number; bar: number }[] = []
   // タイの続きの音符は同じ音の延長なので、旋律の動きとしては数えない
   let continued = false
@@ -592,6 +619,8 @@ function scoreMelody(bars: ScoreNote[][], richness = 0): number {
   }
   // 難しい難易度ほど、音符が細かく多彩なリズムを高く評価する
   if (richness > 0) score += richness * rhythmBonus(bars)
+  // この楽譜で小節をまたぐタイを入れると決めたときは、タイのある候補を高く評価する(2か所まで)
+  if (tieWeight > 0) score += tieWeight * Math.min(2, barlineTies(bars))
   return score
 }
 
@@ -609,12 +638,15 @@ const scaled = (list: [Motif, number][], k: number): [Motif, number][] => list.m
 
 function buildPlan(level: Level, meter: Meter, custom: CustomOptions): Plan {
   const set = MOTIF_SETS[meter.id]
-  const characteristic: [Motif, number][] = [...set.syncopated, ...set.triplet, ...set.tied]
+  // 小節をまたぐタイを伴うシンコペーションは、中級で少し(約1.7倍)、上級でかなり増やす(ただし、そればかりにはしない)
+  const characteristic: [Motif, number][] = [...set.syncopated, ...set.triplet, ...scaled(set.tied, 1.7)]
   if (level === 'advanced') {
-    // 十六分音符・付点八分+十六分・三連符を織り交ぜた動機を主題にし、基本のリズムはほとんど使わない
+    // 十六分音符・付点八分+十六分・三連符を織り交ぜた動機を主題にし、基本のリズムはほとんど使わない。
+    // 主題のおよそ半分は、小節をまたぐタイを伴う動機にする
+    const theme = [...set.sixteenth, ...scaled(set.tiedRich, 1.5)]
     return {
-      theme: set.sixteenth,
-      pool: [...set.sixteenth, ...scaled(characteristic, 0.5), ...scaled(set.basic, 0.1)],
+      theme,
+      pool: [...theme, ...scaled([...set.syncopated, ...set.triplet, ...set.tied], 0.5), ...scaled(set.basic, 0.1)],
       richness: 1,
     }
   }
@@ -625,7 +657,9 @@ function buildPlan(level: Level, meter: Meter, custom: CustomOptions): Plan {
     const order = { quarter: 0, eighth: 1, triplet: 2, sixteenth: 3 }[custom.shortest]
     const basic = [...set.quarter, ...(order >= 1 ? set.basic : [])]
     const extras = [...(order >= 2 ? set.triplet : []), ...(order >= 3 ? set.sixteenth : [])]
-    const sync = custom.syncopation ? [...set.quarterSync, ...(order >= 1 ? [...set.syncopated, ...set.tied] : [])] : []
+    const sync = custom.syncopation
+      ? [...set.quarterSync, ...(order >= 1 ? [...set.syncopated, ...set.tied] : []), ...(order >= 3 ? set.tiedRich : [])]
+      : []
     const special = [...sync, ...extras]
     return {
       theme: special.length ? special : basic,
@@ -738,6 +772,18 @@ function pickMeter(rng: Rng, level: Level, custom: CustomOptions): Meter {
   return random()
 }
 
+/**
+ * 小節をまたぐタイを入れる楽譜の割合。中級は少し、上級はかなり多く(ただし、そればかりにはしない)。
+ * カスタムは、シンコペーションが「あり」のとき、最短の音符が細かいほど多くする
+ */
+function tieProbability(level: Level, custom: CustomOptions): number {
+  // (動機の選択だけでも、中級は約17%、上級は約49%の楽譜にタイが入るので、その分を差し引いた確率にしている)
+  if (level === 'intermediate') return 0.28 // 全体で約40%の楽譜に入る
+  if (level === 'advanced') return 0.3 // 全体で約65%の楽譜に入る
+  if (level === 'custom' && custom.syncopation) return { quarter: 0.15, eighth: 0.2, triplet: 0.2, sixteenth: 0.3 }[custom.shortest]
+  return 0
+}
+
 export function generateScore(
   seed = Math.floor(Math.random() * 2 ** 31),
   level: Level = 'beginner',
@@ -747,6 +793,7 @@ export function generateScore(
   const key = pickKey(rng, level, custom)
   const meter = pickMeter(rng, level, custom)
   const plan = buildPlan(level, meter, custom)
+  const tieWeight = rng() < tieProbability(level, custom) ? 8 : 0
   let best: ScoreNote[][] | null = null
   let bestScore = -Infinity
   let found = 0
@@ -754,7 +801,7 @@ export function generateScore(
     const bars = sampleOnce(rng, plan, key.mode, meter)
     if (!bars) continue
     found++
-    const sc = scoreMelody(bars, plan.richness)
+    const sc = scoreMelody(bars, plan.richness, tieWeight)
     if (sc > bestScore) {
       best = bars
       bestScore = sc
