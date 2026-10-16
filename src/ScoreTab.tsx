@@ -21,6 +21,11 @@ interface Run {
   transpose: number
 }
 
+/** マイクを開いてから、カウントを鳴らし始めるまでの待ち時間 */
+const MIC_SETTLE_MS = 1000
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
 /** 録音を止めてから判定するまでの余白(最後の音の余韻・遅れて届く音を拾う) */
 const TAIL_MS = 800
 
@@ -112,10 +117,16 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
       return
     }
 
+    // マイクを開いた直後は、端末の音の経路が切り替わって再生が乱れることがあるので、落ち着くまで待つ
+    setStatus('まもなく開始します…')
+    await sleep(MIC_SETTLE_MS)
+    if (runIdRef.current !== myRun) return
+
     const transpose = s.instrument.offset
     const handle = playScore(score, {
       tempo,
       transpose,
+      lead: 0.4,
       melody: false,
       click,
       onBeat,
