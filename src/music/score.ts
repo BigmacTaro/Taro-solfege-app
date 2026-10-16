@@ -1,5 +1,30 @@
-export type Level = 'beginner' | 'intermediate' | 'advanced'
-export type Mode = 'major' | 'minor'
+export type Level = 'beginner' | 'intermediate' | 'advanced' | 'custom'
+/** 長調・短調(和声的短音階)と、チャーチモード(教会旋法) */
+export type Mode = 'major' | 'minor' | 'dorian' | 'phrygian' | 'lydian' | 'mixolydian' | 'locrian'
+
+/** カスタムの設定 */
+export type ShortestNote = 'quarter' | 'eighth' | 'triplet' | 'sixteenth'
+export type KeyChoice = 'c-major' | 'major' | 'major-minor' | 'church'
+export interface CustomOptions {
+  /** 拍子。'random' はおまかせ(4/4・3/4・6/8から) */
+  meter: MeterId | 'random'
+  /** 使う最短の音符: 四分音符まで / 八分音符まで / 三連符まで / 十六分音符まで */
+  shortest: ShortestNote
+  /** シンコペーション(タイを伴うものを含む)を入れるか */
+  syncopation: boolean
+  /** 調: ハ長調だけ / 長調だけ / 長調と短調 / チャーチモード */
+  keys: KeyChoice
+  /** 調号の数の上限 */
+  maxAccidentals: 3 | 5
+}
+
+export const DEFAULT_CUSTOM: CustomOptions = {
+  meter: '4/4',
+  shortest: 'eighth',
+  syncopation: true,
+  keys: 'major-minor',
+  maxAccidentals: 3,
+}
 
 export interface ScoreNote {
   /** 長さ(4分音符=1拍)。三連符は 1/3(八分三連)や 2/3(四分三連) */
@@ -63,7 +88,12 @@ const LETTERS = ['c', 'd', 'e', 'f', 'g', 'a', 'b']
 const NATURAL_PC = [0, 2, 4, 5, 7, 9, 11]
 const SCALES: Record<Mode, number[]> = {
   major: [0, 2, 4, 5, 7, 9, 11],
-  minor: [0, 2, 3, 5, 7, 8, 10], // 自然短音階
+  minor: [0, 2, 3, 5, 7, 8, 10], // 自然短音階(属和音の小節で第7音を上げる)
+  dorian: [0, 2, 3, 5, 7, 9, 10],
+  phrygian: [0, 1, 3, 5, 7, 8, 10],
+  lydian: [0, 2, 4, 6, 7, 9, 11],
+  mixolydian: [0, 2, 4, 5, 7, 9, 10],
+  locrian: [0, 1, 3, 5, 6, 8, 10],
 }
 
 const mod = (n: number, m: number) => ((n % m) + m) % m
@@ -104,6 +134,64 @@ const ADVANCED_ONLY_KEYS: KeyInfo[] = [
   makeKey('Bbm', 'minor', 6, -1, '変ロ短調'),
 ]
 export const ADVANCED_KEYS: KeyInfo[] = [...INTERMEDIATE_KEYS, ...ADVANCED_ONLY_KEYS]
+
+// ---- チャーチモードの調 ------------------------------------------------------
+// 教会旋法は、親になる長調の第n音から始めた音階。調号は親の長調と同じになる。
+// 例: ニ・ドリア = ハ長調の第2音(レ)から始まる音階 → 調号なし
+
+interface ParentMajor {
+  vex: string
+  letter: number
+  acc: number
+  accidentals: number
+}
+const PARENT_MAJORS: ParentMajor[] = [
+  { vex: 'C', letter: 0, acc: 0, accidentals: 0 },
+  { vex: 'G', letter: 4, acc: 0, accidentals: 1 },
+  { vex: 'D', letter: 1, acc: 0, accidentals: 2 },
+  { vex: 'A', letter: 5, acc: 0, accidentals: 3 },
+  { vex: 'E', letter: 2, acc: 0, accidentals: 4 },
+  { vex: 'B', letter: 6, acc: 0, accidentals: 5 },
+  { vex: 'F', letter: 3, acc: 0, accidentals: 1 },
+  { vex: 'Bb', letter: 6, acc: -1, accidentals: 2 },
+  { vex: 'Eb', letter: 2, acc: -1, accidentals: 3 },
+  { vex: 'Ab', letter: 5, acc: -1, accidentals: 4 },
+  { vex: 'Db', letter: 1, acc: -1, accidentals: 5 },
+]
+
+/** [旋法, 親の長調の第何音から始めるか(0始まり), 日本語名] */
+const CHURCH_MODES: [Mode, number, string][] = [
+  ['dorian', 1, 'ドリア'],
+  ['phrygian', 2, 'フリギア'],
+  ['lydian', 3, 'リディア'],
+  ['mixolydian', 4, 'ミクソリディア'],
+  ['locrian', 6, 'ロクリア'],
+]
+
+const LETTER_JA = ['ハ', 'ニ', 'ホ', 'ヘ', 'ト', 'イ', 'ロ']
+
+function makeModalKey(parent: ParentMajor, degree: number, mode: Mode, modeJa: string): KeyInfo {
+  const letter = mod(parent.letter + degree, 7)
+  const parentPc = mod(NATURAL_PC[parent.letter] + parent.acc, 12)
+  const pc = mod(parentPc + SCALES.major[degree], 12)
+  const acc = mod(pc - NATURAL_PC[letter] + 6, 12) - 6 // -6〜+5 に収める
+  const accJa = acc === 1 ? '嬰' : acc === -1 ? '変' : acc === 2 ? '重嬰' : acc === -2 ? '重変' : ''
+  return {
+    vex: parent.vex, // 調号は親の長調と同じ
+    mode,
+    tonicLetter: letter,
+    tonicAcc: acc,
+    tonicMidi: 55 + mod(pc - 55, 12),
+    ja: `${accJa}${LETTER_JA[letter]}・${modeJa}`,
+  }
+}
+
+/** チャーチモードの調(調号の数が上限以下の親の長調から作る) */
+export function churchKeys(maxAccidentals: number): KeyInfo[] {
+  return PARENT_MAJORS.filter((p) => p.accidentals <= maxAccidentals).flatMap((p) =>
+    CHURCH_MODES.map(([mode, degree, ja]) => makeModalKey(p, degree, mode, ja)),
+  )
+}
 
 /** 記譜上の音のMIDI番号(移調楽器の補正は含まない) */
 export function noteMidi(score: Score, n: { step: number; alter?: number }): number {

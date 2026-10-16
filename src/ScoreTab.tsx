@@ -5,7 +5,7 @@ import { playScore, type BeatInfo, type PlayHandle } from './audio/player'
 import { evaluate } from './eval/evaluate'
 import { soundingNameOfWrittenC } from './instruments'
 import { generateScore } from './music/generator'
-import type { Level, Score } from './music/score'
+import { DEFAULT_CUSTOM, type CustomOptions, type KeyChoice, type Level, type MeterId, type Score, type ShortestNote } from './music/score'
 import { ResultTimeline } from './ResultTimeline'
 import { ScoreView } from './ScoreView'
 import { load, save } from './storage'
@@ -26,9 +26,47 @@ interface Run {
 /** マイクを開いてから、カウントを鳴らし始めるまでの待ち時間 */
 const MIC_SETTLE_MS = 1000
 
-const LEVELS: Level[] = ['beginner', 'intermediate', 'advanced']
-const LEVEL_LABEL: Record<Level, string> = { beginner: '初級', intermediate: '中級', advanced: '上級' }
+const LEVELS: Level[] = ['beginner', 'intermediate', 'advanced', 'custom']
+const LEVEL_LABEL: Record<Level, string> = { beginner: '初級', intermediate: '中級', advanced: '上級', custom: 'カスタム' }
 const parseLevel = (v: string): Level => (LEVELS.includes(v as Level) ? (v as Level) : 'beginner')
+
+// カスタム設定の選択肢
+const METER_CHOICES: [CustomOptions['meter'], string][] = [['4/4', '4/4'], ['3/4', '3/4'], ['6/8', '6/8'], ['random', 'おまかせ']]
+const SHORTEST_CHOICES: [ShortestNote, string, string][] = [
+  ['quarter', '四分音符まで', '四分'],
+  ['eighth', '八分音符まで', '八分'],
+  ['triplet', '三連符まで', '三連符'],
+  ['sixteenth', '十六分音符まで', '十六分'],
+]
+const SYNC_CHOICES: [boolean, string][] = [[false, 'なし'], [true, 'あり(タイを含む)']]
+const KEY_CHOICES: [KeyChoice, string, string][] = [
+  ['c-major', 'ハ長調だけ', 'ハ長調'],
+  ['major', '長調だけ', '長調'],
+  ['major-minor', '長調と短調', '長調・短調'],
+  ['church', 'チャーチモード', 'チャーチ'],
+]
+const ACC_CHOICES: [3 | 5, string][] = [[3, '3つまで'], [5, '5つまで']]
+
+/** 保存された設定を、今の選択肢に合うものだけ受け入れる */
+function parseCustom(v: unknown): CustomOptions {
+  const o = (v && typeof v === 'object' ? v : {}) as Partial<CustomOptions>
+  const pick = <T,>(choices: readonly (readonly [T, string, ...string[]])[], x: unknown, fallback: T): T => (choices.some(([c]) => c === x) ? (x as T) : fallback)
+  return {
+    meter: pick(METER_CHOICES, o.meter, DEFAULT_CUSTOM.meter),
+    shortest: pick(SHORTEST_CHOICES, o.shortest, DEFAULT_CUSTOM.shortest),
+    syncopation: pick(SYNC_CHOICES, o.syncopation, DEFAULT_CUSTOM.syncopation),
+    keys: pick(KEY_CHOICES, o.keys, DEFAULT_CUSTOM.keys),
+    maxAccidentals: pick(ACC_CHOICES, o.maxAccidentals, DEFAULT_CUSTOM.maxAccidentals),
+  }
+}
+
+/** 折りたたんだときに見える、設定の要約 */
+function customSummary(c: CustomOptions): string {
+  const meter = c.meter === 'random' ? '拍子おまかせ' : c.meter
+  const shortest = SHORTEST_CHOICES.find(([v]) => v === c.shortest)![2]
+  const key = KEY_CHOICES.find(([v]) => v === c.keys)![2]
+  return `${meter}・${shortest}・シンコペ${c.syncopation ? '有' : '無'}・${key}`
+}
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
@@ -40,7 +78,8 @@ const TAIL_MS = 800
 
 export function ScoreTab({ s, onLock, resetTick }: { s: Settings; onLock: (locked: boolean) => void; resetTick: number }) {
   const [level, setLevel] = useState<Level>(() => parseLevel(load<string>('level', 'beginner')))
-  const [score, setScore] = useState(() => generateScore(undefined, level))
+  const [custom, setCustom] = useState<CustomOptions>(() => parseCustom(load<unknown>('custom', DEFAULT_CUSTOM)))
+  const [score, setScore] = useState(() => generateScore(undefined, level, custom))
   const [tempo, setTempo] = useState(() => load('tempo', 80))
   const [click, setClick] = useState(() => load('click', true))
   const [mode, setMode] = useState<Mode>('idle')
@@ -63,6 +102,7 @@ export function ScoreTab({ s, onLock, resetTick }: { s: Settings; onLock: (locke
   useEffect(() => save('tempo', tempo), [tempo])
   useEffect(() => save('click', click), [click])
   useEffect(() => save('level', level), [level])
+  useEffect(() => save('custom', custom), [custom])
   useEffect(() => micRef.current?.setGain(s.mic.gain), [s.mic.gain])
   useEffect(() => onLock(mode === 'practice' || mode === 'judging'), [mode, onLock])
   useEffect(() => () => halt(), [])
@@ -207,7 +247,7 @@ export function ScoreTab({ s, onLock, resetTick }: { s: Settings; onLock: (locke
   const changeScore = () => {
     stop()
     setRun(null)
-    setScore(generateScore(undefined, level))
+    setScore(generateScore(undefined, level, custom))
   }
 
   /** 初級・中級を切り替え、そのレベルで楽譜を作り直す */
@@ -216,7 +256,16 @@ export function ScoreTab({ s, onLock, resetTick }: { s: Settings; onLock: (locke
     stop()
     setRun(null)
     setLevel(next)
-    setScore(generateScore(undefined, next))
+    setScore(generateScore(undefined, next, custom))
+  }
+
+  /** カスタム設定を変え、その設定で楽譜を作り直す */
+  const changeCustom = (patch: Partial<CustomOptions>) => {
+    const next = { ...custom, ...patch }
+    stop()
+    setRun(null)
+    setCustom(next)
+    setScore(generateScore(undefined, 'custom', next))
   }
 
   const result = useMemo(
@@ -296,6 +345,27 @@ export function ScoreTab({ s, onLock, resetTick }: { s: Settings; onLock: (locke
           </>
         )}
       </div>
+
+      {level === 'custom' && (
+        <details className="custompanel">
+          <summary>
+            <span>⚙ カスタム設定</span>
+            <span className="muted small custom-summary">{customSummary(custom)}</span>
+          </summary>
+          <OptionGroup label="拍子" value={custom.meter} choices={METER_CHOICES} disabled={busy} onChange={(v) => changeCustom({ meter: v })} />
+          <OptionGroup label="最短の音符" value={custom.shortest} choices={SHORTEST_CHOICES} disabled={busy} onChange={(v) => changeCustom({ shortest: v })} />
+          <OptionGroup label="シンコペーション" value={custom.syncopation} choices={SYNC_CHOICES} disabled={busy} onChange={(v) => changeCustom({ syncopation: v })} />
+          <OptionGroup label="調" value={custom.keys} choices={KEY_CHOICES} disabled={busy} onChange={(v) => changeCustom({ keys: v })} />
+          <OptionGroup
+            label="調号の数"
+            value={custom.maxAccidentals}
+            choices={ACC_CHOICES}
+            disabled={busy || custom.keys === 'c-major'}
+            onChange={(v) => changeCustom({ maxAccidentals: v })}
+          />
+          <p className="muted small">設定を変えると、その設定で楽譜を作り直します。</p>
+        </details>
+      )}
 
       <p className="muted small mannerhint">📱 マナーモードはOFFに(課題中のクリックは鳴ります)</p>
 
@@ -408,6 +478,34 @@ function BeatDots({ info, perBar }: { info: BeatInfo; perBar: number }) {
       {Array.from({ length: perBar }, (_, i) => (
         <i key={i} className={`dot${i === 0 ? ' first' : ''}${i === info.beat ? ' on' : ''}`} />
       ))}
+    </div>
+  )
+}
+
+/** カスタム設定の1項目(選択肢をトグルで並べる) */
+function OptionGroup<T extends string | number | boolean>({
+  label,
+  value,
+  choices,
+  disabled,
+  onChange,
+}: {
+  label: string
+  value: T
+  choices: readonly (readonly [T, string, ...string[]])[]
+  disabled: boolean
+  onChange: (v: T) => void
+}) {
+  return (
+    <div className="optgroup">
+      <span className="optlabel">{label}</span>
+      <div className="seg opts" role="group" aria-label={label}>
+        {choices.map(([v, text]) => (
+          <button key={String(v)} className="toggle" aria-pressed={v === value} disabled={disabled} onClick={() => onChange(v)}>
+            {text}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

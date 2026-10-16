@@ -334,3 +334,30 @@ button.start:disabled { box-shadow: none; }
 .startcard { margin: 3px 0; }
 .mannerhint { font-size: 0.8rem; }
 .scorebar { margin: 6px 0 2px; }
+
+/* カスタム設定(折りたたみ) */
+.custompanel { margin: 4px 0; padding: 2px 10px; border: 2px solid var(--line); border-radius: 10px; background: var(--panel); }
+.custompanel summary { cursor: pointer; min-height: 38px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-weight: 600; }
+.custom-summary { font-weight: 400; }
+.optgroup { margin: 6px 0; }
+.optlabel { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 3px; }
+/* 選択肢は、折り返して並べる独立したトグルにする(難易度のようなつながった形にはしない) */
+.seg.opts { display: flex; flex-wrap: wrap; gap: 6px; border: 0; border-radius: 0; overflow: visible; }
+.seg.opts button { border: 2px solid var(--line); border-radius: 8px; min-height: 34px; padding: 2px 10px; font-size: 0.85rem; }
+.seg.opts button + button { border-left: 2px solid var(--line); }
+.seg.opts button[aria-pressed='true'] { border-color: var(--accent-dark); }
+
+/* 設定の説明文は、対応する項目のすぐ下にくっつける */
+.groupnote { margin: 2px 0 8px; line-height: 1.35; }
+.topbar-detail .field { margin-bottom: 0; }
+
+/* 一番上: 赤字の注意書き(左)と、小さな「音声リセット」ボタン(右) */
+.toprow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -2px 0 3px; }
+.toprow .reloadnote { flex: 1 1 0; margin: 0; text-align: left; font-size: 0.68rem; }
+button.tinyreset { flex: 0 0 auto; min-height: 24px; padding: 0 9px; font-size: 0.72rem; border-radius: 8px; box-shadow: 0 2px 0 var(--accent); white-space: nowrap; }
+button.tinyreset:active:not(:disabled) { box-shadow: 0 1px 0 var(--accent); }
+
+/* カスタム設定の見出しは1行に収める */
+.custompanel summary { flex-wrap: nowrap; min-height: 34px; font-size: 0.9rem; }
+.custompanel summary span:first-child { white-space: nowrap; }
+.custom-summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.78rem; min-width: 0; }
