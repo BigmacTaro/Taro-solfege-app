@@ -295,30 +295,6 @@ export function ScoreTab({ s, onLock, resetTick }: { s: Settings; onLock: (locke
 
   return (
     <section>
-      <div className="startcard">
-        {mode === 'practice' || mode === 'judging' ? (
-          <button className="start danger" onClick={stop} disabled={mode === 'judging'}>
-            ■ 中止
-          </button>
-        ) : (
-          <button className="start" onClick={startPractice} disabled={busy}>
-            🎤 課題開始
-          </button>
-        )}
-        <div className="notice-line" aria-live="polite">
-          {beat ? (
-            <BeatDots info={beat} perBar={score.beatsPerBar} />
-          ) : status ? (
-            <span className="status">{status}</span>
-          ) : (
-            <span className="notice">
-              「課題開始」を押すと<b>カウントが{score.meter.countIn}つ</b>流れます。そのあとで、<b>演奏(歌唱)を始めてください</b>。最後まで終えると採点します。
-            </span>
-          )}
-        </div>
-        {error && <p className="error">{error}</p>}
-      </div>
-
       <div className="controls">
         {mode === 'melody' ? (
           <button className="danger" onClick={stop}>
@@ -395,6 +371,30 @@ export function ScoreTab({ s, onLock, resetTick }: { s: Settings; onLock: (locke
           (楽譜のドは、実音では<b>{soundingNameOfWrittenC(inst)}</b>)。
         </p>
       )}
+
+      <div className="startcard">
+        {mode === 'practice' || mode === 'judging' ? (
+          <button className="start danger" onClick={stop} disabled={mode === 'judging'}>
+            ■ 中止
+          </button>
+        ) : (
+          <button className="start" onClick={startPractice} disabled={busy}>
+            🎤 課題開始
+          </button>
+        )}
+        <div className="notice-line" aria-live="polite">
+          {beat ? (
+            <BeatDots info={beat} perBar={score.beatsPerBar} />
+          ) : status ? (
+            <span className="status">{status}</span>
+          ) : (
+            <span className="notice">
+              「課題開始」を押すと<b>カウントが{score.meter.countIn}つ</b>流れます。そのあとで、<b>演奏(歌唱)を始めてください</b>。最後まで終えると採点します。
+            </span>
+          )}
+        </div>
+        {error && <p className="error">{error}</p>}
+      </div>
 
       <div className="scorebar">
         <div className="scoreinfo">
