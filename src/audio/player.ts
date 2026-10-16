@@ -13,6 +13,8 @@ export interface PlayOptions {
   tempo: number
   /** 実音 − 記譜音 の半音数(移調楽器用)。旋律は実音で鳴らす */
   transpose?: number
+  /** 最初の拍を鳴らすまでの余裕(秒)。マイクを開いた直後など、音の経路が落ち着くまで長めにとる */
+  lead?: number
   /** 旋律(お手本)を鳴らす */
   melody: boolean
   /** 本編中もクリックを鳴らす。カウントインは常に鳴る */
@@ -33,21 +35,26 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
   const perBar = score.beatsPerBar
   const draw = Tone.getDraw()
 
-  // クリックはマイクの音程検出の範囲(〜1000Hz)より高くして、音として拾われないようにする
-  const clickSynth = new Tone.Synth({
-    oscillator: { type: 'sine' },
-    envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.02 },
-    volume: -8,
-  }).toDestination()
+  // クリックは高めの帯域のノイズ(カチッという音)にする。音程のない音なので、マイクで声や楽器の音と
+  // 取り違えられにくく、スマホの音声処理で純音のように欠けにくい
+  const clickFilter = new Tone.Filter({ type: 'bandpass', frequency: 2600, Q: 0.7 }).toDestination()
+  const clickSynth = new Tone.NoiseSynth({
+    noise: { type: 'white' },
+    envelope: { attack: 0.001, decay: 0.04, sustain: 0, release: 0.01 },
+    volume: 2,
+  }).connect(clickFilter)
   const melodySynth = new Tone.Synth({
     oscillator: { type: 'triangle' },
     envelope: { attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.25 },
     volume: -6,
   }).toDestination()
 
-  const t0 = Tone.now() + 0.15
-  const click = (beatIndex: number, accent: boolean) =>
-    clickSynth.triggerAttackRelease(accent ? 3200 : 2400, 0.04, t0 + beatIndex * spb)
+  const t0 = Tone.now() + (opts.lead ?? 0.15)
+  const click = (beatIndex: number, accent: boolean) => {
+    const t = t0 + beatIndex * spb
+    clickFilter.frequency.setValueAtTime(accent ? 3600 : 2600, t)
+    clickSynth.triggerAttackRelease(0.04, t, accent ? 1 : 0.7)
+  }
   const notify = (beatIndex: number, info: BeatInfo) =>
     draw.schedule(() => opts.onBeat?.(info), t0 + beatIndex * spb)
 
@@ -81,6 +88,7 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
     // 余韻が切れないよう、少し待ってから片付ける
     disposeTimer = setTimeout(() => {
       clickSynth.dispose()
+      clickFilter.dispose()
       melodySynth.dispose()
     }, 1500)
   }
@@ -100,6 +108,7 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
       draw.cancel()
       clearTimeout(disposeTimer)
       clickSynth.dispose()
+      clickFilter.dispose()
       melodySynth.dispose()
       opts.onEnd?.()
     },
