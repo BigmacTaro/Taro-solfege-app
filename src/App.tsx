@@ -20,7 +20,7 @@ export function App() {
   const onLock = useCallback((v: boolean) => setLocked(v), [])
   // 「音声をリセット」を押した回数。各タブは、増えたら再生・録音を止める
   const [resetTick, setResetTick] = useState(0)
-  // 説明は、初めて開いたときに自動で出す。閉じたら、次からは出さない(ヘッダーの「ⓘ」で開き直せる)
+  // 最低限の説明は、初めて開いたときだけ自動で出す。くわしくは、ヘッダーの「ⓘ」(別タブ)で読む
   const [aboutOpen, setAboutOpen] = useState(() => !load('aboutSeen', false))
   const closeAbout = useCallback(() => {
     setAboutOpen(false)
@@ -33,7 +33,7 @@ export function App() {
 
   return (
     <>
-      <Header s={settings} locked={locked} onReset={onReset} onAbout={() => setAboutOpen(true)} />
+      <Header s={settings} locked={locked} onReset={onReset} />
       {aboutOpen && <AboutDialog onClose={closeAbout} />}
       <main>
         <div className="tabs" role="tablist">
