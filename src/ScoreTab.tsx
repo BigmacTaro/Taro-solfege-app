@@ -233,17 +233,14 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
           </button>
         ) : (
           <>
-            <button className="secondary" onClick={changeScore} disabled={busy}>
-              新しい楽譜
-            </button>
-            <button className="secondary" onClick={playModel} disabled={busy}>
+            <button className="secondary play" onClick={playModel} disabled={busy}>
               ▶ お手本を聴く
             </button>
             <div className="seg" role="group" aria-label="難易度">
               {LEVELS.map((l) => (
                 <button
                   key={l}
-                  className={l === level ? 'on' : ''}
+                  className="toggle"
                   aria-pressed={l === level}
                   disabled={busy}
                   onClick={() => changeLevel(l)}
@@ -256,7 +253,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
         )}
       </div>
 
-      <p className="muted small mannerhint">📱 スマホの場合は、マナーモード(消音)をOFFにしてください。</p>
+      <p className="muted small mannerhint">📱 スマホの場合はマナーモードをOFFに</p>
 
       <div className="tempo-row">
         <label htmlFor="tempo">
@@ -272,9 +269,9 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
           disabled={busy}
           onChange={(e) => setTempo(Number(e.target.value))}
         />
-        <label className="inline small" title="お手本・課題の間もクリック音を鳴らす">
+        <label className={`chip${click ? ' on' : ''}${busy ? ' off' : ''}`} title="お手本・課題の間もクリック音を鳴らす">
           <input type="checkbox" checked={click} disabled={busy} onChange={(e) => setClick(e.target.checked)} />
-          クリック
+          <span aria-hidden="true">{click ? '✓' : '○'}</span> クリック音
         </label>
       </div>
 
@@ -285,11 +282,17 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
         </p>
       )}
 
+      <div className="scorebar">
+        <div className="scoreinfo">
+          <b>{LEVEL_LABEL[(run ? run.score : score).level]}</b>・{(run ? run.score : score).key.ja}・
+          {(run ? run.score : score).meter.id}
+          <span className="muted small"> 番号 {run ? run.score.seed : score.seed}</span>
+        </div>
+        <button className="secondary newscore" onClick={changeScore} disabled={busy}>
+          🔄 別の楽譜に変える
+        </button>
+      </div>
       <ScoreView score={run && result ? run.score : score} verdicts={result?.verdicts} />
-      <p className="muted small seedline">
-        {LEVEL_LABEL[(run ? run.score : score).level]}: {(run ? run.score : score).key.ja}・{(run ? run.score : score).meter.id} /
-        楽譜の番号: {run ? run.score.seed : score.seed}
-      </p>
 
       {run && result && (
         <div className="results">

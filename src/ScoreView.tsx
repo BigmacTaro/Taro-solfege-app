@@ -82,7 +82,7 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
   // 狭い画面では1段2小節にする
   const barsPerRow = width < 560 ? 2 : 4
   const rows = Math.ceil(score.bars.length / barsPerRow)
-  const rowHeight = verdicts ? 134 : 98
+  const rowHeight = verdicts ? 134 : 94
 
   const renderer = new Renderer(el, Renderer.Backends.SVG)
   renderer.resize(width, rows * rowHeight)

@@ -22,7 +22,7 @@ export function Header({ s, locked }: { s: Settings; locked: boolean }) {
           />
           <b>×{s.mic.gain.toFixed(1)}</b>
         </label>
-        <button className="secondary gear" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <button className="toggle gear" onClick={() => setOpen(!open)} aria-expanded={open} aria-pressed={open}>
           ⚙ マイク設定 {open ? '▲' : '▼'}
         </button>
       </div>
