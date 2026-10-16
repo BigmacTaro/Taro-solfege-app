@@ -26,13 +26,17 @@ interface Run {
 /** マイクを開いてから、カウントを鳴らし始めるまでの待ち時間 */
 const MIC_SETTLE_MS = 1000
 
+const LEVELS: Level[] = ['beginner', 'intermediate', 'advanced']
+const LEVEL_LABEL: Record<Level, string> = { beginner: '初級', intermediate: '中級', advanced: '上級' }
+const parseLevel = (v: string): Level => (LEVELS.includes(v as Level) ? (v as Level) : 'beginner')
+
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 /** 録音を止めてから判定するまでの余白(最後の音の余韻・遅れて届く音を拾う) */
 const TAIL_MS = 800
 
 export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean) => void }) {
-  const [level, setLevel] = useState<Level>(() => (load<string>('level', 'beginner') === 'intermediate' ? 'intermediate' : 'beginner'))
+  const [level, setLevel] = useState<Level>(() => parseLevel(load<string>('level', 'beginner')))
   const [score, setScore] = useState(() => generateScore(undefined, level))
   const [tempo, setTempo] = useState(() => load('tempo', 80))
   const [click, setClick] = useState(() => load('click', true))
@@ -215,7 +219,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
             <span className="status">{status}</span>
           ) : (
             <span className="notice">
-              「課題開始」を押すと<b>カウントが4つ</b>流れます。そのあとで、<b>演奏(歌唱)を始めてください</b>。
+              「課題開始」を押すと<b>カウントが{score.meter.countIn}つ</b>流れます。そのあとで、<b>演奏(歌唱)を始めてください</b>。
             </span>
           )}
         </div>
@@ -236,7 +240,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
               ▶ お手本を聴く
             </button>
             <div className="seg" role="group" aria-label="難易度">
-              {(['beginner', 'intermediate'] as Level[]).map((l) => (
+              {LEVELS.map((l) => (
                 <button
                   key={l}
                   className={l === level ? 'on' : ''}
@@ -244,7 +248,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
                   disabled={busy}
                   onClick={() => changeLevel(l)}
                 >
-                  {l === 'beginner' ? '初級' : '中級'}
+                  {LEVEL_LABEL[l]}
                 </button>
               ))}
             </div>
@@ -255,7 +259,9 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
       <p className="muted small mannerhint">📱 スマホの場合は、マナーモード(消音)をOFFにしてください。</p>
 
       <div className="tempo-row">
-        <label htmlFor="tempo">テンポ ♩={tempo}</label>
+        <label htmlFor="tempo">
+          テンポ {score.meter.beatLen === 1.5 ? '♩.' : '♩'}={tempo}
+        </label>
         <input
           id="tempo"
           type="range"
@@ -281,7 +287,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
 
       <ScoreView score={run && result ? run.score : score} verdicts={result?.verdicts} />
       <p className="muted small seedline">
-        {(run ? run.score : score).level === 'intermediate' ? '中級' : '初級'}: {(run ? run.score : score).key.ja}・4/4 /
+        {LEVEL_LABEL[(run ? run.score : score).level]}: {(run ? run.score : score).key.ja}・{(run ? run.score : score).meter.id} /
         楽譜の番号: {run ? run.score.seed : score.seed}
       </p>
 

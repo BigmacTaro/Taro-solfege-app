@@ -55,6 +55,8 @@ export interface NoteVerdict {
   duration: 'short' | 'long' | null
   /** 休符で休めていない(休符のみ) */
   restBroken: boolean
+  /** 同じ高さの連打が1つの音にまとまって聞こえ、区切りを確かめられなかった(正解扱い) */
+  merged: boolean
 }
 
 export interface Summary {
@@ -202,7 +204,8 @@ export function segmentFrames(frames: PitchFrame[]): Observed[] {
 
 export function buildExpected(score: Score, p: Pick<EvalParams, 'tempo' | 't0' | 'transpose'>): ExpectedNote[] {
   const spb = 60 / p.tempo
-  const bars0 = p.t0 + score.beatsPerBar * spb // カウントインの1小節あと
+  const { beatLen, countIn } = score.meter
+  const bars0 = p.t0 + countIn * spb // カウントインのあと
   const out: ExpectedNote[] = []
   score.bars.forEach((bar, b) => {
     let pos = 0
@@ -213,8 +216,9 @@ export function buildExpected(score: Score, p: Pick<EvalParams, 'tempo' | 't0' |
         isRest: n.step === null,
         midi: n.step === null ? null : noteMidi(score, { step: n.step, alter: n.alter }) + p.transpose,
         beats: n.beats,
-        start: bars0 + (b * score.beatsPerBar + pos) * spb,
-        dur: n.beats * spb,
+        // 音符の長さ・位置は4分音符=1の単位。メトロノームの1拍(beatLen)で割って秒にする
+        start: bars0 + (b * score.beatsPerBar + pos / beatLen) * spb,
+        dur: (n.beats / beatLen) * spb,
       })
       pos += n.beats
     })
@@ -277,11 +281,11 @@ export function evaluate(score: Score, frames: PitchFrame[], p: EvalParams): Eva
   const spb = 60 / p.tempo
   const expected = buildExpected(score, p)
   const noteEvents = expected.filter((e) => !e.isRest)
-  const tol = Math.min(...noteEvents.map((e) => e.beats)) * spb
+  const tol = (Math.min(...noteEvents.map((e) => e.beats)) / score.meter.beatLen) * spb
   const window = tol + 0.5 * spb
   const lat = p.latencyMs / 1000
 
-  const bars0 = p.t0 + score.beatsPerBar * spb
+  const bars0 = p.t0 + score.meter.countIn * spb
   const endOfPiece = bars0 + score.bars.length * score.beatsPerBar * spb
   // 録音の遅れを補正し、カウントインより前(クリック・準備の音)は対象にしない
   const shifted = frames
@@ -289,7 +293,7 @@ export function evaluate(score: Score, frames: PitchFrame[], p: EvalParams): Eva
     .filter((f) => f.t >= bars0 - window && f.t <= endOfPiece + 0.8)
   // スピーカーのクリック音が回り込んで音程として検出された、短い断片は無視する
   const clickTimes: number[] = []
-  for (let k = 0; k < (p.clickDuringBars ? score.beatsPerBar * (1 + score.bars.length) : score.beatsPerBar); k++) {
+  for (let k = 0; k < score.meter.countIn + (p.clickDuringBars ? score.beatsPerBar * score.bars.length : 0); k++) {
     clickTimes.push(p.t0 + k * spb)
   }
   const observed = segmentFrames(shifted).filter((o) => {
@@ -298,6 +302,23 @@ export function evaluate(score: Score, frames: PitchFrame[], p: EvalParams): Eva
   })
   const matchOf = matchNotes(noteEvents, observed, window)
 
+  // 同じ高さの連打は、息や舌で区切らないと1つの音にまとまって聞こえる(特に速い連打)。
+  // 直前の音と同じ高さで、その音の長さが次の音まで続いているなら、区切りは確かめられないが演奏されたものとみなす
+  const noteExpIndex = expected.flatMap((e, i) => (e.isRest ? [] : [i]))
+  const mergedInto = new Map<number, number>()
+  for (let i = 1; i < noteEvents.length; i++) {
+    if (matchOf[i] >= 0) continue
+    const prevIdx = i - 1
+    const j = matchOf[prevIdx] >= 0 ? matchOf[prevIdx] : (mergedInto.get(prevIdx) ?? -1)
+    if (j < 0) continue
+    // 間に休符がなく、同じ高さの音どうし
+    if (noteExpIndex[i] - noteExpIndex[prevIdx] !== 1) continue
+    if (Math.abs(fold(noteEvents[i].midi! - noteEvents[prevIdx].midi!)) > 1e-6) continue
+    const seg = observed[j]
+    const e = noteEvents[i]
+    if (seg.onset <= e.start + tol && seg.end >= e.start + 0.5 * e.dur) mergedInto.set(i, j)
+  }
+
   const verdicts: NoteVerdict[][] = score.bars.map((b) => b.map(() => emptyVerdict()))
   let ni = 0
   const used = new Set<number>()
@@ -305,17 +326,31 @@ export function evaluate(score: Score, frames: PitchFrame[], p: EvalParams): Eva
     const v = verdicts[e.bar][e.index]
     if (e.isRest) {
       v.isRest = true
-      const lo = e.start + 0.3 * spb
-      const hi = e.start + e.dur - 0.1 * spb
+      // 休符の長さに比例した範囲で、音が続いていないかを見る(短い休符でも判定できる)
+      const lo = e.start + 0.3 * e.dur
+      const hi = e.start + 0.9 * e.dur
       const inside = shifted.filter((f) => f.t >= lo && f.t <= hi)
       const voiced = inside.filter((f) => f.freq !== null).length
       v.restBroken = inside.length > 0 && voiced / inside.length > 0.4
       return
     }
-    const j = matchOf[ni++]
+    const noteIdx = ni++
+    const merged = matchOf[noteIdx] < 0 ? mergedInto.get(noteIdx) : undefined
+    const j = merged ?? matchOf[noteIdx]
     v.expectedMidi = e.midi
     if (j < 0) {
       v.missed = true
+      return
+    }
+    if (merged !== undefined) {
+      // 区切りが聞き取れなかった連打: 高さは同じ音なので正解、タイミングは測れないので正解扱い
+      v.merged = true
+      v.centsOff = 100 * fold(observed[j].midi - e.midi!)
+      v.pitchOk = Math.abs(v.centsOff) <= PITCH_TOL_CENTS
+      v.sungName = NOTE_NAMES_JA[((Math.round(observed[j].midi) % 12) + 12) % 12]
+      v.timingErrSec = 0
+      v.timingErrBeats = 0
+      v.timingOk = true
       return
     }
     used.add(j)
@@ -361,5 +396,6 @@ function emptyVerdict(): NoteVerdict {
     timingOk: false,
     duration: null,
     restBroken: false,
+    merged: false,
   }
 }
