@@ -21,3 +21,8 @@ body { background: var(--bg); color: var(--fg); }
 .settings summary { cursor: pointer; min-height: 32px; }
 .settings label { display: block; margin: 8px 0; }
 .field input[type=range], .field select { display: block; width: 100%; margin-top: 6px; }
+.tabs { display: flex; gap: 8px; margin: 12px 0; }
+.tabs button { flex: 1; }
+.tabs button[aria-selected=true] { background: #0a84ff; color: #fff; border-color: #0a84ff; }
+.score { background: #fff; color: #000; border-radius: 8px; padding: 4px; margin-top: 8px; }
+.status { font-size: 1.1rem; font-weight: 600; min-width: 8em; }
