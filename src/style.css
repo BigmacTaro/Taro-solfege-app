@@ -1,0 +1,19 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0; }
+main { max-width: 640px; margin: 0 auto; padding: 24px 16px; }
+button { font-size: 1.1rem; padding: 12px 20px; min-height: 44px; }
+:root { --bg: #fff; --fg: #1c1c1e; --muted: #6c6c70; --ok: #30a46c; --bad: #e5484d; }
+@media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #f2f2f7; --muted: #8e8e93; } }
+body { background: var(--bg); color: var(--fg); }
+.muted { color: var(--muted); }
+.small { font-size: 0.85rem; }
+.error { color: var(--bad); }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+.readout { text-align: center; margin: 16px 0; }
+.note { font-size: 4rem; font-weight: 700; line-height: 1.1; }
+.cents { font-size: 1.2rem; color: var(--ok); min-height: 1.6em; }
+.cents.bad { color: var(--bad); }
+.meter { position: relative; height: 12px; margin: 12px auto; max-width: 400px; background: rgba(128,128,128,.25); border-radius: 6px; }
+.meter .center { position: absolute; left: 50%; top: -4px; bottom: -4px; width: 2px; background: var(--muted); }
+.meter .needle { position: absolute; top: -4px; bottom: -4px; width: 4px; margin-left: -2px; background: #0a84ff; border-radius: 2px; }
+.history { width: 100%; height: auto; border-radius: 8px; }
