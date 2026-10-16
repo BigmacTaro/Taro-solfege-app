@@ -18,24 +18,48 @@ export function App() {
   const [freq, setFreq] = useState(0)
   const [level, setLevel] = useState(0)
   const [noteLang, setNoteLang] = useState<'ja' | 'en'>('ja')
+  const [gain, setGain] = useState(() => load('gain', 1))
+  const [agc, setAgc] = useState(() => load('agc', true))
+  const [ns, setNs] = useState(() => load('ns', false))
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
+  const [deviceId, setDeviceId] = useState('')
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stopRef = useRef<(() => void) | null>(null)
+  const gainNodeRef = useRef<GainNode | null>(null)
 
   useEffect(() => () => stopRef.current?.(), [])
+  useEffect(() => {
+    if (gainNodeRef.current) gainNodeRef.current.gain.value = gain
+    save('gain', gain)
+  }, [gain])
+  useEffect(() => save('agc', agc), [agc])
+  useEffect(() => save('ns', ns), [ns])
 
   const start = async () => {
     setError('')
     try {
-      // 歌声の解析には、ノイズ抑制や自動音量調整を切った生に近い音が向いている
+      // echoCancellation は常に切る。AGC/ノイズ抑制は端末によって効き方が違うので設定で切り替える
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: ns,
+          autoGainControl: agc,
+          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+        },
       })
+      // 許可後でないとデバイス名が取れない
+      const all = await navigator.mediaDevices.enumerateDevices()
+      setDevices(all.filter((d) => d.kind === 'audioinput'))
       const ctx = new AudioContext()
       await ctx.resume()
       const source = ctx.createMediaStreamSource(stream)
+      const gainNode = ctx.createGain()
+      gainNode.gain.value = gain
+      gainNodeRef.current = gainNode
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 4096
-      source.connect(analyser)
+      source.connect(gainNode)
+      gainNode.connect(analyser)
       const buf = new Float32Array(analyser.fftSize)
       const history: Sample[] = []
       let raf = 0
@@ -120,6 +144,43 @@ export function App() {
       </div>
       {error && <p className="error">{error}</p>}
 
+      <details className="settings" open>
+        <summary>マイク設定</summary>
+        <label className="field">
+          感度(増幅): ×{gain.toFixed(1)}
+          <input
+            type="range"
+            min={1}
+            max={20}
+            step={0.5}
+            value={gain}
+            onChange={(e) => setGain(Number(e.target.value))}
+          />
+        </label>
+        <label>
+          <input type="checkbox" checked={agc} disabled={running} onChange={(e) => setAgc(e.target.checked)} />{' '}
+          自動音量調整(AGC)
+        </label>
+        <label>
+          <input type="checkbox" checked={ns} disabled={running} onChange={(e) => setNs(e.target.checked)} />{' '}
+          ノイズ抑制
+        </label>
+        {devices.length > 1 && (
+          <label className="field">
+            入力デバイス
+            <select value={deviceId} disabled={running} onChange={(e) => setDeviceId(e.target.value)}>
+              <option value="">既定</option>
+              {devices.map((d) => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || d.deviceId.slice(0, 8)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <p className="muted small">AGC・ノイズ抑制・入力デバイスは、停止してから変更してください。</p>
+      </details>
+
       <div className="readout" aria-live="off">
         <div className="note">
           {note ? `${noteLang === 'ja' ? note.ja : note.en}${note.octave}` : '—'}
@@ -148,6 +209,23 @@ export function App() {
       </div>
     </main>
   )
+}
+
+function load<T>(key: string, fallback: T): T {
+  try {
+    const v = localStorage.getItem(`solfege.${key}`)
+    return v === null ? fallback : (JSON.parse(v) as T)
+  } catch {
+    return fallback
+  }
+}
+
+function save(key: string, value: unknown) {
+  try {
+    localStorage.setItem(`solfege.${key}`, JSON.stringify(value))
+  } catch {
+    // 保存できない環境では設定が残らないだけ
+  }
 }
 
 function drawHistory(canvas: HTMLCanvasElement | null, history: Sample[], now: number) {
