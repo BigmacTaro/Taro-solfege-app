@@ -10,6 +10,10 @@ export interface EvalParams {
   transpose: number
   /** 入力の遅れの補正(ミリ秒)。録音された音が実際より遅れて届く分を打ち消す */
   latencyMs: number
+  /** 課題の本編中もクリックを鳴らしていたか(カウントインは常に鳴る)。スピーカーから回り込んだクリック音を除くために使う */
+  clickDuringBars?: boolean
+  /** 上級者モード: 音が短すぎる(期待の半分未満)ことも指摘する。標準では評価しない */
+  checkShort?: boolean
 }
 
 export interface ExpectedNote {
@@ -85,6 +89,9 @@ const JUMP_SEMITONES = 0.7
 const JUMP_FRAMES = 3
 const MIN_SEGMENT = 0.06
 const PITCH_TOL_CENTS = 50
+/** クリック音がマイクに回り込んだものとみなす条件: クリックの後この時間内に始まり、この長さより短い */
+const BLEED_WINDOW = 0.35
+const BLEED_MAX_DUR = 0.12
 
 interface VFrame {
   t: number
@@ -280,7 +287,15 @@ export function evaluate(score: Score, frames: PitchFrame[], p: EvalParams): Eva
   const shifted = frames
     .map((f) => ({ ...f, t: f.t - lat }))
     .filter((f) => f.t >= bars0 - window && f.t <= endOfPiece + 0.8)
-  const observed = segmentFrames(shifted)
+  // スピーカーのクリック音が回り込んで音程として検出された、短い断片は無視する
+  const clickTimes: number[] = []
+  for (let k = 0; k < (p.clickDuringBars ? score.beatsPerBar * (1 + score.bars.length) : score.beatsPerBar); k++) {
+    clickTimes.push(p.t0 + k * spb)
+  }
+  const observed = segmentFrames(shifted).filter((o) => {
+    const isBleed = o.end - o.onset < BLEED_MAX_DUR && clickTimes.some((c) => o.onset >= c - 0.05 && o.onset <= c + BLEED_WINDOW)
+    return !isBleed
+  })
   const matchOf = matchNotes(noteEvents, observed, window)
 
   const verdicts: NoteVerdict[][] = score.bars.map((b) => b.map(() => emptyVerdict()))
@@ -312,9 +327,9 @@ export function evaluate(score: Score, frames: PitchFrame[], p: EvalParams): Eva
     v.timingErrSec = seg.onset - e.start
     v.timingErrBeats = v.timingErrSec / spb
     v.timingOk = Math.abs(v.timingErrSec) <= tol
-    // 長さ: 期待の半分未満しか鳴っていなければ短すぎる。休符の前で伸ばしすぎも指摘
+    // 長さ: (上級者モードのみ)期待の半分未満しか鳴っていなければ短すぎる。休符の前で伸ばしすぎは常に指摘
     const next = expected[idx + 1]
-    if (seg.end - seg.onset < 0.45 * e.dur) v.duration = 'short'
+    if (p.checkShort && seg.end - seg.onset < 0.45 * e.dur) v.duration = 'short'
     else if (next?.isRest && seg.end > e.start + e.dur + 0.4 * spb) v.duration = 'long'
   })
 

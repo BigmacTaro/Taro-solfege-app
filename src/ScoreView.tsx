@@ -3,7 +3,8 @@ import { Annotation, Barline, Beam, Dot, Formatter, Renderer, Stave, StaveNote, 
 import type { NoteVerdict } from './eval/evaluate'
 import { beatsToVexDuration, stepToVexKey, type Score } from './music/score'
 
-const STAVE_TOP = 30
+// VexFlowの五線は、指定した位置より約40px下から始まる(上の余白を含むため)。その分を差し引く
+const STAVE_TOP = -20
 
 const COLORS = {
   ok: '#1e9e5a',
@@ -50,8 +51,9 @@ function labelsOf(v: NoteVerdict): string[] {
   if (v.missed) return ['聞こえず']
   const out: string[] = []
   const cents = Math.round(v.centsOff!)
-  if (v.pitchOk) out.push(`${cents >= 0 ? '+' : ''}${cents}¢`)
-  else out.push(`${v.sungName} ${cents >= 0 ? '+' : ''}${cents}¢`)
+  const signed = `${cents >= 0 ? '+' : ''}${cents}`
+  // 外れたときは、実際に出した音名も添える。単位(セント)は凡例に書く
+  out.push(v.pitchOk ? signed : `${v.sungName}${signed}`)
   if (!v.timingOk) {
     const b = Math.abs(v.timingErrBeats!).toFixed(1)
     out.push(v.timingErrBeats! > 0 ? `遅${b}拍` : `早${b}拍`)
@@ -66,7 +68,7 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
   // 狭い画面では1段2小節にする
   const barsPerRow = width < 560 ? 2 : 4
   const rows = Math.ceil(score.bars.length / barsPerRow)
-  const rowHeight = verdicts ? 185 : 150
+  const rowHeight = verdicts ? 134 : 98
 
   const renderer = new Renderer(el, Renderer.Backends.SVG)
   renderer.resize(width, rows * rowHeight)

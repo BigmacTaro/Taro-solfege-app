@@ -19,6 +19,8 @@ interface Run {
   t0: number
   tempo: number
   transpose: number
+  /** 課題の間もクリックを鳴らしたか */
+  click: boolean
 }
 
 /** マイクを開いてから、カウントを鳴らし始めるまでの待ち時間 */
@@ -139,7 +141,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
           micRef.current?.stop()
           micRef.current = null
           handleRef.current = null
-          setRun({ score, frames: framesRef.current.slice(), t0: handle.startTime, tempo, transpose })
+          setRun({ score, frames: framesRef.current.slice(), t0: handle.startTime, tempo, transpose, click })
           setMode('idle')
           setStatus('')
         }, TAIL_MS)
@@ -162,9 +164,11 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
             t0: run.t0,
             transpose: run.transpose,
             latencyMs: s.latencyMs,
+            checkShort: s.checkShort,
+            clickDuringBars: run.click,
           })
         : null,
-    [run, s.latencyMs],
+    [run, s.latencyMs, s.checkShort],
   )
 
   // 全体に一定方向のずれがあれば、入力の遅れとして補正を提案する
@@ -179,34 +183,6 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
 
   return (
     <section>
-      <div className="row">
-        <button className="secondary" onClick={changeScore} disabled={busy}>
-          新しい楽譜
-        </button>
-        <span className="muted small">番号: {score.seed}</span>
-        <span className="muted small">初級: ハ長調・4/4</span>
-      </div>
-
-      <label className="field">
-        テンポ: ♩={tempo}
-        <input
-          type="range"
-          min={40}
-          max={180}
-          step={1}
-          value={tempo}
-          disabled={busy}
-          onChange={(e) => setTempo(Number(e.target.value))}
-        />
-      </label>
-
-      {transposing && (
-        <p className="info">
-          {inst.name}: 楽譜は記譜(読む音)のまま表示します。楽譜のドは、実音では
-          <b>{soundingNameOfWrittenC(inst)}</b>で鳴ります。
-        </p>
-      )}
-
       <div className="startcard">
         {mode === 'practice' || mode === 'judging' ? (
           <button className="start danger" onClick={stop} disabled={mode === 'judging'}>
@@ -217,34 +193,67 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
             🎤 課題開始
           </button>
         )}
-        <p className="notice">
-          「課題開始」を押すと<b>カウントが4つ</b>流れます。そのあとで、<b>演奏(歌唱)を始めてください</b>。
-        </p>
-        <div className={`status ${status ? 'on' : ''}`} aria-live="polite">
-          {status || ' '}
+        <div className="notice-line" aria-live="polite">
+          {status ? (
+            <span className="status">{status}</span>
+          ) : (
+            <span className="notice">
+              「課題開始」を押すと<b>カウントが4つ</b>流れます。そのあとで、<b>演奏(歌唱)を始めてください</b>。
+            </span>
+          )}
         </div>
         {error && <p className="error">{error}</p>}
       </div>
 
-      <div className="row">
-        <button className="secondary" onClick={() => play('melody')} disabled={busy}>
-          ▶ お手本を聴く
-        </button>
-        <button className="secondary" onClick={() => play('metronome')} disabled={busy}>
-          ♩ メトロノームのみ
-        </button>
-        {(mode === 'melody' || mode === 'metronome') && (
+      <div className="controls">
+        {mode === 'melody' || mode === 'metronome' ? (
           <button className="danger" onClick={stop}>
             ■ 停止
           </button>
+        ) : (
+          <>
+            <button className="secondary" onClick={changeScore} disabled={busy}>
+              新しい楽譜
+            </button>
+            <button className="secondary" onClick={() => play('melody')} disabled={busy}>
+              ▶ お手本
+            </button>
+            <button className="secondary" onClick={() => play('metronome')} disabled={busy}>
+              ♩ メトロノーム
+            </button>
+          </>
         )}
-        <label className="inline">
-          <input type="checkbox" checked={click} disabled={busy} onChange={(e) => setClick(e.target.checked)} />{' '}
-          お手本・課題の間もクリックを鳴らす
+      </div>
+
+      <div className="tempo-row">
+        <label htmlFor="tempo">テンポ ♩={tempo}</label>
+        <input
+          id="tempo"
+          type="range"
+          min={40}
+          max={180}
+          step={1}
+          value={tempo}
+          disabled={busy}
+          onChange={(e) => setTempo(Number(e.target.value))}
+        />
+        <label className="inline small" title="お手本・課題の間もクリック音を鳴らす">
+          <input type="checkbox" checked={click} disabled={busy} onChange={(e) => setClick(e.target.checked)} />
+          クリック
         </label>
       </div>
 
+      {transposing && (
+        <p className="info">
+          {inst.name}: 楽譜は記譜(読む音)のまま表示します。楽譜のドは、実音では
+          <b>{soundingNameOfWrittenC(inst)}</b>で鳴ります。
+        </p>
+      )}
+
       <ScoreView score={run && result ? run.score : score} verdicts={result?.verdicts} />
+      <p className="muted small seedline">
+        初級: ハ長調・4/4 / 楽譜の番号: {run ? run.score.seed : score.seed}
+      </p>
 
       {run && result && (
         <div className="results">

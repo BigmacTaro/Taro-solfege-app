@@ -83,6 +83,13 @@ export function Header({ s, locked }: { s: Settings; locked: boolean }) {
               onChange={(e) => s.setLatencyMs(Number(e.target.value))}
             />
           </label>
+          <details className="adv">
+            <summary>上級者モード</summary>
+            <label>
+              <input type="checkbox" checked={s.checkShort} onChange={(e) => s.setCheckShort(e.target.checked)} />{' '}
+              音価の短さも評価する(短すぎる音を指摘)
+            </label>
+          </details>
           <p className="muted small">
             判定結果で全体に「遅れ」が出るときに上げると、タイミングのずれが小さくなります(Bluetoothイヤホンなどで有効)。
             AGC・ノイズ抑制・入力デバイスは、課題の途中では変更できません。

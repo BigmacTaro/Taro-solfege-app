@@ -29,20 +29,63 @@ export interface PlayHandle {
   startTime: number
 }
 
+/**
+ * ウッドブロックの音を合成する。木の棒の響きに近い、整数倍でない倍音(1 : 2.76 : 5.4)が
+ * 短時間で減衰する音に、打撃の瞬間のごく短いノイズを足している。
+ * 音程の検出範囲(〜1000Hz)より上の帯域に主な成分があり、音程感も弱いので、
+ * マイクに回り込んでも声や楽器の音と取り違えられにくい。
+ */
+const woodblockCache = new Map<string, AudioBuffer>()
+
+function woodblockBuffer(sampleRate: number, accent: boolean): AudioBuffer {
+  const key = `${sampleRate}:${accent}`
+  const cached = woodblockCache.get(key)
+  if (cached) return cached
+  const f0 = accent ? 1500 : 1100
+  const length = Math.floor(sampleRate * 0.14)
+  const raw = Tone.getContext().rawContext as unknown as BaseAudioContext
+  const buffer = raw.createBuffer(1, length, sampleRate)
+  const data = buffer.getChannelData(0)
+  const partials: [number, number, number][] = [
+    // [周波数の倍率, 振幅, 減衰の時定数(秒)]
+    [1, 1, 0.022],
+    [2.76, 0.55, 0.014],
+    [5.4, 0.25, 0.008],
+  ]
+  let seed = 12345
+  const noise = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0
+    return seed / 2147483648 - 1
+  }
+  let peak = 0
+  for (let i = 0; i < length; i++) {
+    const t = i / sampleRate
+    let v = 0
+    for (const [ratio, amp, tau] of partials) v += amp * Math.exp(-t / tau) * Math.sin(2 * Math.PI * f0 * ratio * t)
+    v += 0.35 * Math.exp(-t / 0.002) * noise() // 打撃の瞬間
+    data[i] = v
+    peak = Math.max(peak, Math.abs(v))
+  }
+  const gain = 0.9 / peak
+  for (let i = 0; i < length; i++) data[i] *= gain
+  // 終わりのぷつっというノイズを避ける
+  const fade = Math.floor(sampleRate * 0.01)
+  for (let i = 0; i < fade; i++) data[length - 1 - i] *= i / fade
+  woodblockCache.set(key, buffer)
+  return buffer
+}
+
 /** カウントイン(1小節)のあと、楽譜の全小節を再生する */
 export function playScore(score: Score, opts: PlayOptions): PlayHandle {
   const spb = 60 / opts.tempo
   const perBar = score.beatsPerBar
   const draw = Tone.getDraw()
 
-  // クリックは高めの帯域のノイズ(カチッという音)にする。音程のない音なので、マイクで声や楽器の音と
-  // 取り違えられにくく、スマホの音声処理で純音のように欠けにくい
-  const clickFilter = new Tone.Filter({ type: 'bandpass', frequency: 2600, Q: 0.7 }).toDestination()
-  const clickSynth = new Tone.NoiseSynth({
-    noise: { type: 'white' },
-    envelope: { attack: 0.001, decay: 0.04, sustain: 0, release: 0.01 },
-    volume: 2,
-  }).connect(clickFilter)
+  const rate = Tone.getContext().sampleRate
+  const clickNormal = new Tone.Player(new Tone.ToneAudioBuffer(woodblockBuffer(rate, false))).toDestination()
+  const clickAccent = new Tone.Player(new Tone.ToneAudioBuffer(woodblockBuffer(rate, true))).toDestination()
+  clickNormal.volume.value = -3
+  clickAccent.volume.value = -1
   const melodySynth = new Tone.Synth({
     oscillator: { type: 'triangle' },
     envelope: { attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.25 },
@@ -50,11 +93,8 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
   }).toDestination()
 
   const t0 = Tone.now() + (opts.lead ?? 0.15)
-  const click = (beatIndex: number, accent: boolean) => {
-    const t = t0 + beatIndex * spb
-    clickFilter.frequency.setValueAtTime(accent ? 3600 : 2600, t)
-    clickSynth.triggerAttackRelease(0.04, t, accent ? 1 : 0.7)
-  }
+  const click = (beatIndex: number, accent: boolean) =>
+    (accent ? clickAccent : clickNormal).start(t0 + beatIndex * spb)
   const notify = (beatIndex: number, info: BeatInfo) =>
     draw.schedule(() => opts.onBeat?.(info), t0 + beatIndex * spb)
 
@@ -87,8 +127,8 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
   const cleanup = () => {
     // 余韻が切れないよう、少し待ってから片付ける
     disposeTimer = setTimeout(() => {
-      clickSynth.dispose()
-      clickFilter.dispose()
+      clickNormal.dispose()
+      clickAccent.dispose()
       melodySynth.dispose()
     }, 1500)
   }
@@ -107,8 +147,8 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
       stopped = true
       draw.cancel()
       clearTimeout(disposeTimer)
-      clickSynth.dispose()
-      clickFilter.dispose()
+      clickNormal.dispose()
+      clickAccent.dispose()
       melodySynth.dispose()
       opts.onEnd?.()
     },
