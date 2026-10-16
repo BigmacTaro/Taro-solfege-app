@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import * as Tone from 'tone'
-import { load, save } from './storage'
-import { detectPitch, freqToNote, type NoteInfo } from './pitch'
+import { micErrorMessage, startMic, type MicHandle } from './audio/mic'
+import { freqToNote, type NoteInfo } from './pitch'
+import type { Settings } from './useSettings'
 
 const HISTORY_SEC = 6
 const MIDI_MIN = 36 // C2
@@ -12,104 +13,62 @@ interface Sample {
   midi: number | null
 }
 
-export function PitchLab() {
+/** マイク入力の確認用。音名とセントのずれをリアルタイムに表示する */
+export function PitchLab({ s, onLock }: { s: Settings; onLock: (locked: boolean) => void }) {
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
   const [note, setNote] = useState<NoteInfo | null>(null)
+  const [written, setWritten] = useState<NoteInfo | null>(null)
   const [freq, setFreq] = useState(0)
   const [level, setLevel] = useState(0)
   const [noteLang, setNoteLang] = useState<'ja' | 'en'>('ja')
-  const [gain, setGain] = useState(() => load('gain', 1))
-  const [agc, setAgc] = useState(() => load('agc', true))
-  const [ns, setNs] = useState(() => load('ns', false))
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
-  const [deviceId, setDeviceId] = useState('')
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const stopRef = useRef<(() => void) | null>(null)
-  const gainNodeRef = useRef<GainNode | null>(null)
+  const micRef = useRef<MicHandle | null>(null)
+  const offsetRef = useRef(s.instrument.offset)
+  offsetRef.current = s.instrument.offset
 
-  useEffect(() => () => stopRef.current?.(), [])
-  useEffect(() => {
-    if (gainNodeRef.current) gainNodeRef.current.gain.value = gain
-    save('gain', gain)
-  }, [gain])
-  useEffect(() => save('agc', agc), [agc])
-  useEffect(() => save('ns', ns), [ns])
+  useEffect(() => micRef.current?.setGain(s.mic.gain), [s.mic.gain])
+  useEffect(() => onLock(running), [running, onLock])
+  useEffect(
+    () => () => {
+      micRef.current?.stop()
+    },
+    [],
+  )
 
   const start = async () => {
     setError('')
+    const history: Sample[] = []
     try {
-      // echoCancellation は常に切る。AGC/ノイズ抑制は端末によって効き方が違うので設定で切り替える
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: ns,
-          autoGainControl: agc,
-          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-        },
-      })
-      // 許可後でないとデバイス名が取れない
-      const all = await navigator.mediaDevices.enumerateDevices()
-      setDevices(all.filter((d) => d.kind === 'audioinput'))
-      const ctx = new AudioContext()
-      await ctx.resume()
-      const source = ctx.createMediaStreamSource(stream)
-      const gainNode = ctx.createGain()
-      gainNode.gain.value = gain
-      gainNodeRef.current = gainNode
-      const analyser = ctx.createAnalyser()
-      analyser.fftSize = 4096
-      source.connect(gainNode)
-      gainNode.connect(analyser)
-      const buf = new Float32Array(analyser.fftSize)
-      const history: Sample[] = []
-      let raf = 0
-      let lastMidi: number | null = null
-
-      const tick = () => {
-        analyser.getFloatTimeDomainData(buf)
-        let sum = 0
-        for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
-        setLevel(Math.sqrt(sum / buf.length))
-
-        const r = detectPitch(buf, ctx.sampleRate)
-        const now = performance.now() / 1000
-        if (r) {
-          const n = freqToNote(r.freq)
-          lastMidi = n.midi
-          setNote(n)
-          setFreq(r.freq)
+      const mic = await startMic(s.mic, (f) => {
+        setLevel(f.rms)
+        if (f.freq !== null) {
+          setNote(freqToNote(f.freq))
+          // 移調楽器では、実音から記譜音(楽譜に書く音)も求める
+          setWritten(freqToNote(f.freq / 2 ** (offsetRef.current / 12)))
+          setFreq(f.freq)
         } else {
-          lastMidi = null
           setNote(null)
+          setWritten(null)
         }
-        history.push({ t: now, midi: lastMidi })
-        while (history.length && now - history[0].t > HISTORY_SEC) history.shift()
-        drawHistory(canvasRef.current, history, now)
-        raf = requestAnimationFrame(tick)
-      }
-      tick()
-
-      stopRef.current = () => {
-        cancelAnimationFrame(raf)
-        stream.getTracks().forEach((t) => t.stop())
-        void ctx.close()
-        stopRef.current = null
-      }
+        history.push({ t: f.t, midi: f.freq === null ? null : freqToNote(f.freq).midi })
+        while (history.length && f.t - history[0].t > HISTORY_SEC) history.shift()
+        drawHistory(canvasRef.current, history, f.t)
+      })
+      micRef.current = mic
+      s.setDevices(mic.devices)
       setRunning(true)
     } catch (e) {
-      setError(
-        e instanceof Error && e.name === 'NotAllowedError'
-          ? 'マイクの使用が許可されていません。ブラウザの設定で許可してください。'
-          : `マイクを開始できませんでした: ${e instanceof Error ? e.message : String(e)}`,
-      )
+      setError(micErrorMessage(e))
     }
   }
 
   const stop = () => {
-    stopRef.current?.()
+    micRef.current?.stop()
+    micRef.current = null
     setRunning(false)
     setNote(null)
+    setWritten(null)
     setLevel(0)
   }
 
@@ -121,8 +80,10 @@ export function PitchLab() {
     setTimeout(() => synth.dispose(), 2000)
   }
 
+  const label = (n: NoteInfo) => `${noteLang === 'ja' ? n.ja : n.en}${n.octave}`
   const cents = note?.cents ?? 0
   const inTolerance = Math.abs(cents) <= 50
+  const transposing = s.instrument.offset !== 0
 
   return (
     <section>
@@ -130,11 +91,13 @@ export function PitchLab() {
 
       <div className="row">
         {running ? (
-          <button onClick={stop}>停止</button>
+          <button className="danger" onClick={stop}>
+            ■ 停止
+          </button>
         ) : (
-          <button onClick={start}>マイク開始</button>
+          <button onClick={start}>🎤 マイク開始</button>
         )}
-        <label>
+        <label className="inline">
           音名{' '}
           <select value={noteLang} onChange={(e) => setNoteLang(e.target.value as 'ja' | 'en')}>
             <option value="ja">ドレミ</option>
@@ -144,50 +107,11 @@ export function PitchLab() {
       </div>
       {error && <p className="error">{error}</p>}
 
-      <details className="settings" open>
-        <summary>マイク設定</summary>
-        <label className="field">
-          感度(増幅): ×{gain.toFixed(1)}
-          <input
-            type="range"
-            min={1}
-            max={20}
-            step={0.5}
-            value={gain}
-            onChange={(e) => setGain(Number(e.target.value))}
-          />
-        </label>
-        <label>
-          <input type="checkbox" checked={agc} disabled={running} onChange={(e) => setAgc(e.target.checked)} />{' '}
-          自動音量調整(AGC)
-        </label>
-        <label>
-          <input type="checkbox" checked={ns} disabled={running} onChange={(e) => setNs(e.target.checked)} />{' '}
-          ノイズ抑制
-        </label>
-        {devices.length > 1 && (
-          <label className="field">
-            入力デバイス
-            <select value={deviceId} disabled={running} onChange={(e) => setDeviceId(e.target.value)}>
-              <option value="">既定</option>
-              {devices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || d.deviceId.slice(0, 8)}
-                </option>
-              ))}
-            </select>
-          </label>
+      <div className="readout">
+        <div className="note">{note ? label(note) : '—'}</div>
+        {transposing && (
+          <div className="muted">{written ? `記譜: ${label(written)}(実音を表示中)` : '記譜: —'}</div>
         )}
-        <p className="muted small">
-          スマートフォンの場合、感度を×3.0以上にすると音を拾いやすくなることがあります。
-        </p>
-        <p className="muted small">AGC・ノイズ抑制・入力デバイスは、停止してから変更してください。</p>
-      </details>
-
-      <div className="readout" aria-live="off">
-        <div className="note">
-          {note ? `${noteLang === 'ja' ? note.ja : note.en}${note.octave}` : '—'}
-        </div>
         <div className={`cents ${note && !inTolerance ? 'bad' : ''}`}>
           {note ? `${cents >= 0 ? '+' : ''}${cents.toFixed(0)} セント` : '音が検出されていません'}
         </div>
@@ -205,7 +129,7 @@ export function PitchLab() {
       <h2>基準音を鳴らす</h2>
       <div className="row">
         {['C4', 'E4', 'G4', 'A4'].map((n) => (
-          <button key={n} onClick={() => playRef(n)}>
+          <button key={n} className="secondary" onClick={() => playRef(n)}>
             {n}
           </button>
         ))}

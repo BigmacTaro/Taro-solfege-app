@@ -1,38 +1,52 @@
 import type { Score, ScoreNote } from './score'
 
+/**
+ * 8小節の旋律の自動生成(初級: ハ長調・4/4・最短は八分音符)。
+ *
+ * 楽典の考え方に沿って作る。
+ * - 構造: 動機(2小節) → 前楽節(4小節、半終止) + 後楽節(4小節、完全終止) の大楽節。
+ *   平行楽節(同じ動機で始まる)と対照楽節(後半で別のリズムを使う)をランダムに選ぶ。
+ * - 和声: 小節ごとに I・IV・V を割り当て、強拍には和声音を置く。長い音は和声音に限る。
+ * - 非和声音: 経過音・刺繍音として弱拍に順次進行で置く。傾向音(ファ・シ)は解決させる。
+ * - 動きの自然さ: 順次進行が中心、大きな跳躍の後は反対方向へ順次進行で戻る。
+ * - 終止: 4小節目はソかレで半終止、7小節目はレかシで終わって最後の主音へ解決する。
+ * - 全体の形: たくさん候補を作り、山(クライマックス)や音域、ジグザグ具合などで採点して選ぶ。
+ */
+
 /** 負の値は休符(長さは絶対値) */
 type Rhythm = number[]
 
-// 初級: ハ長調・4/4・最短は八分音符。八分音符は拍の頭から2つ組で置く
-const NORMAL_RHYTHMS: [Rhythm, number][] = [
-  [[1, 1, 1, 1], 4],
-  [[2, 1, 1], 2],
-  [[1, 1, 2], 2],
-  [[2, 2], 2],
-  [[1, 0.5, 0.5, 1, 1], 2],
-  [[0.5, 0.5, 1, 1, 1], 2],
-  [[1, 1, 0.5, 0.5, 1], 2],
-  [[1.5, 0.5, 1, 1], 2],
-  [[1, 1, 1.5, 0.5], 1.5],
-  [[0.5, 0.5, 0.5, 0.5, 1, 1], 1],
-  [[3, 1], 1],
-  [[4], 0.5],
+/** 2小節のリズム動機。1小節目で問い、2小節目は長い音で収まる */
+const MOTIFS: [[Rhythm, Rhythm], number][] = [
+  [[[1, 1, 1, 1], [1, 1, 2]], 3],
+  [[[1, 1, 2], [1, 1, 2]], 3],
+  [[[2, 1, 1], [2, 2]], 2],
+  [[[1.5, 0.5, 1, 1], [1.5, 0.5, 2]], 3],
+  [[[1, 0.5, 0.5, 1, 1], [1, 0.5, 0.5, 2]], 3],
+  [[[0.5, 0.5, 1, 1, 1], [0.5, 0.5, 1, 2]], 2],
+  [[[1, 1, 1, 0.5, 0.5], [1, 1, 2]], 2],
+  [[[1, 0.5, 0.5, 1, 1], [1, 1, 2]], 2],
+  [[[1, 1, 1, 1], [1, 1, 1, 1]], 1.5],
+  [[[2, 1, 0.5, 0.5], [1, 1, 2]], 1.5],
 ]
-const REST_RHYTHMS: [Rhythm, number][] = [
-  [[1, 1, 1, -1], 1],
-  [[3, -1], 1],
-]
+
 const FINAL_RHYTHMS: [Rhythm, number][] = [
   [[4], 0.65],
   [[3, -1], 0.35],
 ]
 
-// 各小節の和音(I=0, IV=3, V=4)。前半は属音で問い、後半は主音で答えて終わる
-const BAR_ROOTS = [0, 3, 0, 4, 0, 3, 4, 0]
-const CHORD_TONES = (root: number) => new Set([root % 7, (root + 2) % 7, (root + 4) % 7])
+// 各小節の和音の根音(I=0, IV=3, V=4)。1-2小節目と5-6小節目の和音は揃える
+const CHORD_PLANS: number[][] = [
+  [0, 3, 0, 4, 0, 3, 4, 0],
+  [0, 0, 3, 4, 0, 0, 4, 0],
+  [0, 3, 4, 4, 0, 3, 4, 0],
+]
+
+const chordTones = (root: number) => new Set([root % 7, (root + 2) % 7, (root + 4) % 7])
 
 const STEP_LO = -2
 const STEP_HI = 7
+const CANDIDATES = 300
 
 const mod = (n: number, m: number) => ((n % m) + m) % m
 
@@ -59,121 +73,288 @@ function weighted<T>(rng: Rng, items: [T, number][]): T {
   return items[items.length - 1][0]
 }
 
-const sameRhythm = (a: Rhythm, b: Rhythm) => a.length === b.length && a.every((v, i) => v === b[i])
+// ---------------------------------------------------------------- 旋律の歩み
 
-function rhythmPlan(rng: Rng): Rhythm[] {
-  const noRestStart = (list: [Rhythm, number][]) => list.filter(([r]) => r[0] > 0)
-  // 小節末が短い音符・休符のものは終止の小節に置かない
-  const cadence = NORMAL_RHYTHMS.filter(([r]) => r[r.length - 1] >= 1)
-  const all = [...NORMAL_RHYTHMS, ...REST_RHYTHMS]
-
-  const r0 = weighted(rng, noRestStart(NORMAL_RHYTHMS))
-  const r1 = rng() < 0.6 ? r0 : weighted(rng, noRestStart(NORMAL_RHYTHMS))
-  const r2 = weighted(rng, all)
-  const r3 = weighted(rng, cadence)
-  const r4 = rng() < 0.7 ? r0 : weighted(rng, noRestStart(NORMAL_RHYTHMS))
-  const r5 = rng() < 0.5 ? r1 : weighted(rng, all)
-  const r6 = weighted(rng, cadence)
-  const r7 = weighted(rng, FINAL_RHYTHMS)
-  return [r0, r1, r2, r3, r4, r5, r6, r7]
+interface State {
+  prev: number | null
+  prev2: number | null
+  /** 直前の音(傾向音)の次に許される音程。なければ null */
+  pending: Set<number> | null
 }
 
-function intervalWeight(d: number, beats: number): number {
+interface EventCtx {
+  beats: number
+  strong: boolean
+  chord: Set<number>
+  /** 模倣する動機の、同じ位置の音程 */
+  guideInterval?: number
+  guideWeight: number
+  /** この音に許される高さの制限(最初の音・終止の音) */
+  onlySteps?: Set<number>
+}
+
+function stepWeight(d: number, beats: number): number {
   const a = Math.abs(d)
-  const base = [1.2, 6, 3, 1, 0.5, 0.2][a] ?? 0
+  const base = [0.6, 6, 3, 1, 0.5][a] ?? 0
   // 八分音符では跳躍を控えめに
   return beats <= 0.5 && a >= 2 ? base * 0.3 : base
 }
 
-export function generateScore(seed = Math.floor(Math.random() * 2 ** 31)): Score {
-  const rng = mulberry32(seed)
-  const rhythms = rhythmPlan(rng)
-  const bars: ScoreNote[][] = []
-
-  let prev: number | null = null
-  let prevInterval = 0
-
-  const chooseStep = (
-    beats: number,
-    strong: boolean,
-    barIndex: number,
-    isLastInBar: boolean,
-    isTwoBack: boolean,
-  ): number => {
-    if (prev === null) {
-      return weighted(rng, [[0, 3], [2, 2], [4, 2]] as [number, number][])
+/** 次の音を選ぶ。条件を満たす音がなければ null */
+function nextStep(rng: Rng, st: State, ev: EventCtx): number | null {
+  const prev = st.prev
+  const cands: [number, number][] = []
+  for (let s = STEP_LO; s <= STEP_HI; s++) {
+    if (ev.onlySteps && !ev.onlySteps.has(s)) continue
+    let w = 1
+    let d = 0
+    if (prev !== null) {
+      d = s - prev
+      w = stepWeight(d, ev.beats)
+      if (w === 0) continue
+      // 傾向音の次は、解決・経過・刺繍の動きだけ
+      if (st.pending && !st.pending.has(d)) continue
+      // 4度以上の跳躍の後は、反対方向へ順次進行で戻る
+      const lastD = st.prev2 === null ? 0 : prev - st.prev2
+      if (Math.abs(lastD) >= 3 && (Math.sign(d) !== -Math.sign(lastD) || Math.abs(d) !== 1)) continue
+      // 同じ音を3回続けない
+      if (d === 0 && lastD === 0 && st.prev2 !== null) continue
+      // 順次進行の後は同じ方向へ進みやすい(順次進行の慣性)
+      if (Math.abs(lastD) === 1 && Math.abs(d) === 1) w *= Math.sign(d) === Math.sign(lastD) ? 1.5 : 0.8
     }
-    const from = prev
-    const chord = CHORD_TONES(BAR_ROOTS[barIndex])
-    const build = (leapRule: boolean, cadenceRule: boolean) => {
-      const cands: [number, number][] = []
-      for (let s = STEP_LO; s <= STEP_HI; s++) {
-        const d = s - from
-        let w = intervalWeight(d, beats)
-        if (w === 0) continue
-        // 4度以上跳躍した後は、逆方向へ順次進行で戻る
-        if (leapRule && Math.abs(prevInterval) >= 3) {
-          if (Math.sign(d) !== -Math.sign(prevInterval) || Math.abs(d) > 2) continue
-        }
-        if (d === 0 && isTwoBack) continue
-        const isChord = chord.has(mod(s, 7))
-        w *= strong ? (isChord ? 5 : 0.3) : isChord ? 1.3 : 1
-        if (cadenceRule && isLastInBar && barIndex === 3) {
-          // 前半の終わりは属音(ソ)か2度(レ)で止まる
-          const m = mod(s, 7)
-          if (m !== 4 && m !== 1) continue
-          if (m === 4) w *= 3
-        }
-        if (isLastInBar && barIndex === 6) {
-          // 主音に解決しやすい音(レ・シ)を好む
-          const m = mod(s, 7)
-          w *= m === 1 || m === 6 ? 3 : m === 4 ? 1 : 0.5
-        }
-        cands.push([s, w])
-      }
-      return cands
+
+    const m = mod(s, 7)
+    const isChord = ev.chord.has(m)
+    // 長い音は和声音、強拍も和声音を好む
+    if (ev.beats >= 2 && !isChord) continue
+    w *= ev.strong ? (isChord ? 5 : 0.15) : isChord ? 1.2 : 1
+    if (ev.beats >= 1.5 && !isChord) w *= 0.3
+
+    // 傾向音(ファ・シ)が和声音でないときは、順次進行で入り、強拍では短く置く
+    if (!isChord && (m === 3 || m === 6)) {
+      if (prev !== null && Math.abs(d) !== 1) continue
+      if (ev.strong && ev.beats > 1) continue
     }
-    // 条件を満たす音がないときは、まず跳躍後の進行の制約を、次に終止音の制約をゆるめる
-    const found = [build(true, true), build(false, true), build(false, false)].find((c) => c.length)!
-    return weighted(rng, found)
+
+    // 声域の中心(ミ〜ソあたり)に寄せる
+    w *= Math.exp(-((s - 2.5) ** 2) / 18)
+
+    // 動機の模倣
+    if (ev.guideInterval !== undefined && prev !== null && d === ev.guideInterval) w *= ev.guideWeight
+    if (w > 0) cands.push([s, w])
   }
+  return cands.length ? weighted(rng, cands) : null
+}
 
-  for (let b = 0; b < 8; b++) {
-    // 前半の1小節目と同じリズムなら、旋律ごと反復することがある(AA')
-    if (b === 4 && sameRhythm(rhythms[4], rhythms[0]) && rng() < 0.7) {
-      const copy = bars[0].map((n) => ({ ...n }))
-      bars.push(copy)
-      const pitched = copy.filter((n) => n.step !== null)
-      prev = pitched[pitched.length - 1].step
-      prevInterval = pitched.length > 1 ? prev! - pitched[pitched.length - 2].step! : 0
-      continue
-    }
+/** 和声音でない傾向音(ファ・シ)の次に許される音程 */
+function pendingAfter(s: number, prev: number | null, isChord: boolean, strong: boolean): Set<number> | null {
+  const m = mod(s, 7)
+  if (isChord || prev === null) return null
+  const d = s - prev
+  if (m === 3) return strong ? new Set([-1]) : d > 0 ? new Set([1, -1]) : new Set([-1, 1])
+  if (m === 6) return strong ? new Set([1]) : d > 0 ? new Set([1]) : new Set([-1, 1])
+  return null
+}
 
+interface Walked {
+  bars: ScoreNote[][]
+  intervals: (number | undefined)[]
+}
+
+/**
+ * 指定した小節を歩く。失敗(条件を満たす音がない)なら null。
+ * guide: 模倣元の音程列、startSteps: 最初の音の制限、endSteps: 最後の音に課す終止の制約
+ */
+function walk(
+  rng: Rng,
+  st: State,
+  rhythms: Rhythm[],
+  barRoots: number[],
+  opts: {
+    guide?: (number | undefined)[]
+    guideWeight?: number
+    startSteps?: Set<number>
+    endSteps?: Set<number>
+  },
+): Walked | null {
+  const bars: ScoreNote[][] = []
+  const intervals: (number | undefined)[] = []
+  let k = 0
+  for (let b = 0; b < rhythms.length; b++) {
     const events = rhythms[b]
+    const chord = chordTones(barRoots[b])
+    const lastPitched = events.reduce((acc, e, i) => (e > 0 ? i : acc), -1)
     const notes: ScoreNote[] = []
-    const lastPitchedIdx = events.reduce((acc, e, i) => (e > 0 ? i : acc), -1)
     let pos = 0
-    let twoBack: number | null = null
-    events.forEach((e, i) => {
+    for (let i = 0; i < events.length; i++) {
+      const e = events[i]
       const beats = Math.abs(e)
       if (e < 0) {
         notes.push({ beats, step: null })
-      } else if (b === 7) {
-        // 最後は主音で終わる(音域内で直前に近いほう)
-        const target = prev !== null && Math.abs(7 - prev) < Math.abs(0 - prev) ? 7 : 0
-        notes.push({ beats, step: target })
-      } else {
-        const strong = pos % 2 === 0
-        const step = chooseStep(beats, strong, b, i === lastPitchedIdx, twoBack !== null && twoBack === prev)
-        twoBack = prev
-        prevInterval = prev === null ? 0 : step - prev
-        prev = step
-        notes.push({ beats, step })
+        pos += beats
+        continue
       }
+      const ev: EventCtx = {
+        beats,
+        strong: pos % 2 === 0,
+        chord,
+        guideInterval: opts.guide?.[k],
+        guideWeight: opts.guideWeight ?? 1,
+      }
+      if (st.prev === null && opts.startSteps) ev.onlySteps = opts.startSteps
+      if (b === rhythms.length - 1 && i === lastPitched && opts.endSteps) ev.onlySteps = opts.endSteps
+      const s = nextStep(rng, st, ev)
+      if (s === null) return null
+      intervals.push(st.prev === null ? undefined : s - st.prev)
+      st.pending = pendingAfter(s, st.prev, chord.has(mod(s, 7)), ev.strong)
+      st.prev2 = st.prev
+      st.prev = s
+      notes.push({ beats, step: s })
       pos += beats
-    })
+      k++
+    }
     bars.push(notes)
   }
+  return { bars, intervals }
+}
 
-  return { key: 'C', beatsPerBar: 4, bars, seed }
+// ---------------------------------------------------------------- 採点
+
+function scoreMelody(bars: ScoreNote[][]): number {
+  const flat: { s: number; bar: number }[] = []
+  bars.forEach((b, bi) => b.forEach((n) => n.step !== null && flat.push({ s: n.step, bar: bi })))
+  const steps = flat.map((f) => f.s)
+  const n = steps.length
+  let score = 0
+
+  // ジグザグ(方向転換の多さ)を嫌う
+  let reversals = 0
+  let lastDir = 0
+  let repeats = 0
+  let leaps = 0
+  let bigLeaps = 0
+  for (let i = 1; i < n; i++) {
+    const d = steps[i] - steps[i - 1]
+    const dir = Math.sign(d)
+    if (dir === 0) repeats++
+    else {
+      if (lastDir !== 0 && dir !== lastDir) reversals++
+      lastDir = dir
+    }
+    if (Math.abs(d) >= 2) leaps++
+    if (Math.abs(d) >= 4) bigLeaps++
+  }
+  score -= Math.max(0, reversals - n * 0.3) * 1.5
+  score -= Math.max(0, repeats / n - 0.12) * 20
+  score -= Math.max(0, leaps / n - 0.3) * 10
+  score -= Math.max(0, 0.1 - leaps / n) * 10
+  score -= Math.max(0, bigLeaps - 1) * 2
+
+  // 音域: 6〜8度程度の広がりが歌いやすく、かつ単調でない
+  const max = Math.max(...steps)
+  const min = Math.min(...steps)
+  const span = max - min
+  score += span >= 5 && span <= 8 ? 3 : -Math.abs(span - 6.5) * 1.5
+
+  // 山(クライマックス): 最高音が一度だけ現れる
+  const peaks = flat.filter((f) => f.s === max)
+  const peakBar = peaks[0].bar
+  // 後楽節(5〜6小節目)に山が来ると最も収まりがよい
+  score += peakBar >= 4 && peakBar <= 5 ? 4 : peakBar >= 2 && peakBar <= 3 ? 1 : peakBar === 0 || peakBar === 7 ? -4 : -1
+  score -= Math.max(0, peaks.length - 2) * 1.5
+  // 最低音も繰り返し現れすぎない
+  score -= Math.max(0, flat.filter((f) => f.s === min).length - 3) * 1
+
+  // 同じ音ばかりにならない
+  const counts = new Map<number, number>()
+  steps.forEach((s) => counts.set(mod(s, 7), (counts.get(mod(s, 7)) ?? 0) + 1))
+  score += Math.min(counts.size, 6) * 0.5
+  score -= Math.max(0, Math.max(...counts.values()) / n - 0.3) * 15
+
+  // 隣り合う小節が全く同じ高さの並びになるのは単調
+  for (let b = 1; b < 8; b++) {
+    const a = bars[b - 1].map((x) => x.step).join()
+    const c = bars[b].map((x) => x.step).join()
+    if (a === c) score -= 1
+  }
+  return score
+}
+
+// ---------------------------------------------------------------- 生成
+
+function sampleOnce(rng: Rng): ScoreNote[][] | null {
+  const parallel = rng() < 0.55
+  const roots = CHORD_PLANS[Math.floor(rng() * CHORD_PLANS.length)]
+  const A = weighted(rng, MOTIFS)
+  const B = parallel ? A : weighted(rng, MOTIFS.filter(([m]) => m !== A))
+
+  // 4小節目は、ときどきフレーズ末に休符(息継ぎ)を入れる
+  let r4 = B[1]
+  const last = r4[r4.length - 1]
+  if (last >= 2 && rng() < 0.2) r4 = [...r4.slice(0, -1), last - 1, -1]
+
+  const r7 = B[0][B[0].length - 1] >= 1 ? B[0] : A[1]
+  const rhythms: Rhythm[] = [A[0], A[1], B[0], r4, A[0], A[1], r7]
+
+  const st: State = { prev: null, prev2: null, pending: null }
+  const first = walk(rng, st, rhythms.slice(0, 2), roots.slice(0, 2), { startSteps: new Set([0, 2, 4]) })
+  if (!first) return null
+
+  // 前楽節の後半: 平行楽節なら動機を模倣する。終わりはソかレ(半終止)
+  const second = walk(rng, st, rhythms.slice(2, 4), roots.slice(2, 4), {
+    guide: parallel ? first.intervals : undefined,
+    guideWeight: 5,
+    endSteps: new Set([1, 4]),
+  })
+  if (!second) return null
+
+  // 後楽節の前半: 動機をそのまま、または模倣して再現する
+  let third: Walked | null
+  const chordsSame = roots[0] === roots[4] && roots[1] === roots[5]
+  if (chordsSame && rng() < 0.5) {
+    const bars = first.bars.map((b) => b.map((n) => ({ ...n })))
+    const pitched = bars.flat().filter((n) => n.step !== null)
+    if (Math.abs(pitched[0].step! - st.prev!) > 4) return null
+    st.prev2 = pitched[pitched.length - 2].step!
+    st.prev = pitched[pitched.length - 1].step!
+    st.pending = null
+    third = { bars, intervals: first.intervals }
+  } else {
+    third = walk(rng, st, rhythms.slice(4, 6), roots.slice(4, 6), { guide: first.intervals, guideWeight: 6 })
+  }
+  if (!third) return null
+
+  // 終止の前: 最後の主音へ順次進行で解決する音(レかシ)で止まる
+  const fourth = walk(rng, st, rhythms.slice(6, 7), roots.slice(6, 7), {
+    guide: parallel ? second.intervals : undefined,
+    guideWeight: 2,
+    endSteps: new Set([1, -1, 6]),
+  })
+  if (!fourth) return null
+
+  const lastStep = st.prev!
+  const tonic = Math.abs(lastStep - 7) < Math.abs(lastStep) ? 7 : 0
+  const finalRhythm = weighted(rng, FINAL_RHYTHMS)
+  const finalBar = finalRhythm.map((e) => (e < 0 ? { beats: -e, step: null } : { beats: e, step: tonic }))
+
+  return [...first.bars, ...second.bars, ...third.bars, ...fourth.bars, finalBar]
+}
+
+export function generateScore(seed = Math.floor(Math.random() * 2 ** 31)): Score {
+  const rng = mulberry32(seed)
+  let best: ScoreNote[][] | null = null
+  let bestScore = -Infinity
+  let found = 0
+  for (let attempt = 0; attempt < CANDIDATES * 10 && found < CANDIDATES; attempt++) {
+    const bars = sampleOnce(rng)
+    if (!bars) continue
+    found++
+    const sc = scoreMelody(bars)
+    if (sc > bestScore) {
+      best = bars
+      bestScore = sc
+    }
+  }
+  if (!best) throw new Error('楽譜を生成できませんでした')
+  return { key: 'C', beatsPerBar: 4, bars: best, seed }
 }

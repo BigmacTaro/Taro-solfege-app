@@ -11,6 +11,8 @@ export interface BeatInfo {
 
 export interface PlayOptions {
   tempo: number
+  /** 実音 − 記譜音 の半音数(移調楽器用)。旋律は実音で鳴らす */
+  transpose?: number
   /** 旋律(お手本)を鳴らす */
   melody: boolean
   /** 本編中もクリックを鳴らす。カウントインは常に鳴る */
@@ -21,6 +23,8 @@ export interface PlayOptions {
 
 export interface PlayHandle {
   stop(): void
+  /** カウントインの最初の拍が鳴る時刻(AudioContextの時刻、秒) */
+  startTime: number
 }
 
 /** カウントイン(1小節)のあと、楽譜の全小節を再生する */
@@ -29,10 +33,11 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
   const perBar = score.beatsPerBar
   const draw = Tone.getDraw()
 
+  // クリックはマイクの音程検出の範囲(〜1000Hz)より高くして、音として拾われないようにする
   const clickSynth = new Tone.Synth({
-    oscillator: { type: 'square' },
-    envelope: { attack: 0.001, decay: 0.04, sustain: 0, release: 0.02 },
-    volume: -14,
+    oscillator: { type: 'sine' },
+    envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.02 },
+    volume: -8,
   }).toDestination()
   const melodySynth = new Tone.Synth({
     oscillator: { type: 'triangle' },
@@ -42,7 +47,7 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
 
   const t0 = Tone.now() + 0.15
   const click = (beatIndex: number, accent: boolean) =>
-    clickSynth.triggerAttackRelease(accent ? 1760 : 1175, 0.03, t0 + beatIndex * spb)
+    clickSynth.triggerAttackRelease(accent ? 3200 : 2400, 0.04, t0 + beatIndex * spb)
   const notify = (beatIndex: number, info: BeatInfo) =>
     draw.schedule(() => opts.onBeat?.(info), t0 + beatIndex * spb)
 
@@ -61,7 +66,7 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
     let pos = 0
     for (const n of bar) {
       if (n.step !== null) {
-        const freq = Tone.Frequency(stepToMidi(n.step), 'midi').toFrequency()
+        const freq = Tone.Frequency(stepToMidi(n.step) + (opts.transpose ?? 0), 'midi').toFrequency()
         melodySynth.triggerAttackRelease(freq, n.beats * spb * 0.92, t0 + (barStart + pos) * spb)
       }
       pos += n.beats
@@ -88,6 +93,7 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
   }, t0 + total * spb)
 
   return {
+    startTime: t0,
     stop() {
       if (stopped) return
       stopped = true
