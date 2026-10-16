@@ -1,5 +1,6 @@
 import * as Tone from 'tone'
 import { detectPitch } from '../pitch'
+import { setAudioSession } from './session'
 
 export interface MicSettings {
   /** ソフトウェアでの増幅(iPhoneなど入力が小さい端末向け) */
@@ -43,14 +44,28 @@ export async function startMic(
   await Tone.start()
   const ctx = Tone.getContext().rawContext as unknown as AudioContext
   // echoCancellation は常に切る。AGC/ノイズ抑制は端末によって効き方が違うので設定で切り替える
-  const stream = await navigator.mediaDevices.getUserMedia({
+  const constraints: MediaStreamConstraints = {
     audio: {
       echoCancellation: false,
       noiseSuppression: settings.ns,
       autoGainControl: settings.agc,
       ...(settings.deviceId ? { deviceId: { exact: settings.deviceId } } : {}),
     },
-  })
+  }
+  // iPhoneのSafariでは、音声セッションの種類が録音に向かないもの(再生専用など)のままだと、
+  // 「Audiosession category is not compatible with audio capture」でマイクを開けない。
+  // 開く前に、録音と再生ができる種類にする。それでも失敗したら、既定に戻してもう一度試す
+  setAudioSession('play-and-record')
+  let stream: MediaStream
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints)
+  } catch (e) {
+    if (e instanceof Error && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) throw e
+    setAudioSession('auto')
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    setAudioSession('play-and-record')
+    stream = await navigator.mediaDevices.getUserMedia(constraints)
+  }
   // 許可後でないとデバイス名が取れない
   const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput')
 
@@ -88,6 +103,8 @@ export async function startMic(
       stream.getTracks().forEach((t) => t.stop())
       source.disconnect()
       gainNode.disconnect()
+      // マイクを使い終えたら、音声セッションを既定に戻す(録音用のまま残さない)
+      setAudioSession('auto')
     },
   }
 }
