@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as Tone from 'tone'
+import { ensureAudioRunning } from './audio/engine'
 import { micErrorMessage, startMic, type MicHandle } from './audio/mic'
 import { freqToNote, type NoteInfo } from './pitch'
 import type { Settings } from './useSettings'
@@ -14,7 +15,7 @@ interface Sample {
 }
 
 /** マイク入力の確認用。音名とセントのずれをリアルタイムに表示する */
-export function PitchLab({ s, onLock }: { s: Settings; onLock: (locked: boolean) => void }) {
+export function PitchLab({ s, onLock, resetTick }: { s: Settings; onLock: (locked: boolean) => void; resetTick: number }) {
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
   const [note, setNote] = useState<NoteInfo | null>(null)
@@ -29,6 +30,11 @@ export function PitchLab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
 
   useEffect(() => micRef.current?.setGain(s.mic.gain), [s.mic.gain])
   useEffect(() => onLock(running), [running, onLock])
+  // 「音声をリセット」が押されたら、マイクを止める
+  useEffect(() => {
+    if (resetTick > 0) stop()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetTick])
   useEffect(
     () => () => {
       micRef.current?.stop()
@@ -40,6 +46,7 @@ export function PitchLab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
     setError('')
     const history: Sample[] = []
     try {
+      await ensureAudioRunning()
       const mic = await startMic(s.mic, (f) => {
         setLevel(f.rms)
         if (f.freq !== null) {
@@ -74,7 +81,7 @@ export function PitchLab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
 
   // ブラウザの仕様上、音はユーザー操作の後でないと鳴らせない
   const playRef = async (name: string) => {
-    await Tone.start()
+    await ensureAudioRunning()
     const synth = new Tone.Synth().toDestination()
     synth.triggerAttackRelease(name, '1', undefined, 0.6)
     setTimeout(() => synth.dispose(), 2000)

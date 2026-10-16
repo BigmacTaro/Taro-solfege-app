@@ -1,6 +1,5 @@
 import * as Tone from 'tone'
-import { noteMidi, type Score } from '../music/score'
-import { setAudioSession } from './session'
+import { noteMidi, soundedNotes, type Score } from '../music/score'
 
 export interface BeatInfo {
   phase: 'countin' | 'play'
@@ -16,6 +15,8 @@ export interface PlayOptions {
   transpose?: number
   /** 最初の拍を鳴らすまでの余裕(秒)。マイクを開いた直後など、音の経路が落ち着くまで長めにとる */
   lead?: number
+  /** カウントインのクリックを鳴らすか(既定は鳴らす)。OFFなら、カウントも無音で、画面の拍の表示だけになる */
+  countInClick?: boolean
   /** 旋律(お手本)を鳴らす */
   melody: boolean
   /** 本編中もクリックを鳴らす。カウントインは常に鳴る */
@@ -87,14 +88,11 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
   const countIn = score.meter.countIn
   const beatLen = score.meter.beatLen
   const draw = Tone.getDraw()
-  // 再生用の音声セッションにする。消音スイッチが入っていても、メインのスピーカーから鳴る(iPhone)
-  setAudioSession('playback')
 
   // 移調楽器の実音は、スマホのスピーカーでは出せないほど低くなることがある(テナーサックスなど)。
   // 判定はオクターブ違いを同じ音として扱うので、お手本は聞こえる高さまで1オクターブ単位で上げて鳴らす
-  const soundingMidis = score.bars.flatMap((bar) =>
-    bar.flatMap((n) => (n.step === null ? [] : [noteMidi(score, { step: n.step, alter: n.alter }) + (opts.transpose ?? 0)])),
-  )
+  const sounded = soundedNotes(score) // タイで結ばれた音は1つにまとめる
+  const soundingMidis = sounded.map((n) => noteMidi(score, n) + (opts.transpose ?? 0))
   const meanMidi = soundingMidis.reduce((a, b) => a + b, 0) / Math.max(1, soundingMidis.length)
   const lift = meanMidi < MIN_MODEL_MEAN_MIDI ? 12 * Math.ceil((MIN_MODEL_MEAN_MIDI - meanMidi) / 12) : 0
 
@@ -116,7 +114,7 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
     draw.schedule(() => opts.onBeat?.(info), t0 + beatIndex * spb)
 
   for (let k = 0; k < countIn; k++) {
-    click(k, k % perBar === 0)
+    if (opts.countInClick ?? true) click(k, k % perBar === 0)
     notify(k, { phase: 'countin', bar: 0, beat: k % perBar })
   }
 
@@ -126,17 +124,16 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
       if (opts.click) click(barStart + k, k === 0)
       notify(barStart + k, { phase: 'play', bar: b, beat: k })
     }
-    if (!opts.melody) return
-    let pos = 0
-    for (const n of bar) {
-      if (n.step !== null) {
-        const freq = Tone.Frequency(noteMidi(score, { step: n.step, alter: n.alter }) + (opts.transpose ?? 0) + lift, 'midi').toFrequency()
-        // 音符の長さ・位置は4分音符=1の単位なので、メトロノームの拍(beatLen)で割って秒にする
-        melodySynth.triggerAttackRelease(freq, (n.beats / beatLen) * spb * 0.92, t0 + (barStart + pos / beatLen) * spb)
-      }
-      pos += n.beats
-    }
+    // (旋律は、下でまとめて鳴らす)
   })
+
+  if (opts.melody) {
+    for (const n of sounded) {
+      const freq = Tone.Frequency(noteMidi(score, n) + (opts.transpose ?? 0) + lift, 'midi').toFrequency()
+      // 音符の長さ・位置は4分音符=1の単位なので、メトロノームの拍(beatLen)で割って秒にする。タイの分の長さを含む
+      melodySynth.triggerAttackRelease(freq, (n.beats / beatLen) * spb * 0.92, t0 + (countIn + n.pos / beatLen) * spb)
+    }
+  }
 
   const total = countIn + score.bars.length * perBar
   let stopped = false

@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { resetAudio } from './audio/engine'
 import { Header } from './Header'
 import { INSTRUMENTS } from './instruments'
 import { PitchLab } from './PitchLab'
@@ -15,10 +16,16 @@ export function App() {
   // マイクを使っている間は、AGCなど途中で変えられない設定をロックする
   const [locked, setLocked] = useState(false)
   const onLock = useCallback((v: boolean) => setLocked(v), [])
+  // 「音声をリセット」を押した回数。各タブは、増えたら再生・録音を止める
+  const [resetTick, setResetTick] = useState(0)
+  const onReset = useCallback(async () => {
+    setResetTick((t) => t + 1)
+    await resetAudio()
+  }, [])
 
   return (
     <>
-      <Header s={settings} locked={locked} />
+      <Header s={settings} locked={locked} onReset={onReset} />
       <main>
         <div className="tabs" role="tablist">
           <button
@@ -58,10 +65,10 @@ export function App() {
 
         {/* 切り替えても楽譜と結果が消えないよう、非表示にして保持する */}
         <div hidden={tab !== 'score'}>
-          <ScoreTab s={settings} onLock={tab === 'score' ? onLock : noop} />
+          <ScoreTab s={settings} onLock={tab === 'score' ? onLock : noop} resetTick={resetTick} />
         </div>
         <div hidden={tab !== 'pitch'}>
-          <PitchLab s={settings} onLock={tab === 'pitch' ? onLock : noop} />
+          <PitchLab s={settings} onLock={tab === 'pitch' ? onLock : noop} resetTick={resetTick} />
         </div>
       </main>
     </>

@@ -10,6 +10,7 @@ import {
   Renderer,
   Stave,
   StaveNote,
+  StaveTie,
   Tuplet,
   Voice,
 } from 'vexflow'
@@ -60,6 +61,8 @@ function colorOf(v: NoteVerdict): string {
 
 /** 音符の下に出す小さな文字。ずれの量を伝える */
 function labelsOf(v: NoteVerdict): string[] {
+  // タイの続きの音符は、先頭の音符の結果を色で示すだけにする(文字は先頭にだけ付ける)
+  if (v.tiedCont) return []
   if (v.isRest) return v.restBroken ? ['休めてない'] : []
   if (v.missed) return ['聞こえず']
   const out: string[] = []
@@ -82,7 +85,7 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
   // 狭い画面では1段2小節にする
   const barsPerRow = width < 560 ? 2 : 4
   const rows = Math.ceil(score.bars.length / barsPerRow)
-  const rowHeight = verdicts ? 134 : 94
+  const rowHeight = verdicts ? 134 : 92
 
   const renderer = new Renderer(el, Renderer.Backends.SVG)
   renderer.resize(width, rows * rowHeight)
@@ -93,6 +96,9 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
   // 段頭は音部記号・調号(・拍子記号)の分だけ広げる
   const headExtra = (row: number) => 40 + keySignatureCount(score.key) * 11 + (row === 0 ? 24 : 0)
   const baseWidth = (row: number) => (usable - headExtra(row)) / barsPerRow
+
+  // タイを描くため、描いた音符を(小節, 番号)で覚えておく
+  const drawn = new Map<string, StaveNote>()
 
   score.bars.forEach((bar, index) => {
     const row = Math.floor(index / barsPerRow)
@@ -119,6 +125,7 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
           ? new StaveNote({ keys: ['b/4'], duration: `${duration}r` })
           : new StaveNote({ keys: [noteVexKey(score, { step: n.step, alter: n.alter })], duration, autoStem: true })
       if (duration.endsWith('d')) Dot.buildAndAttach([note], { all: true })
+      drawn.set(`${index}:${i}`, note)
 
       const v = verdicts?.[index]?.[i]
       if (v) {
@@ -157,5 +164,24 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
     voice.draw(ctx, stave)
     beams.forEach((b) => b.setContext(ctx).draw())
     tuplets.forEach((t) => t.setContext(ctx).draw())
+  })
+
+  // タイ: 同じ段の中は弧でつなぎ、段をまたぐときは、段末と次の段頭に半分ずつ描く
+  const ctxDraw = (t: StaveTie) => t.setContext(ctx).draw()
+  score.bars.forEach((bar, b) => {
+    bar.forEach((n, i) => {
+      if (!n.tie) return
+      const nb = i + 1 < bar.length ? b : b + 1
+      const ni = i + 1 < bar.length ? i + 1 : 0
+      const first = drawn.get(`${b}:${i}`)
+      const last = drawn.get(`${nb}:${ni}`)
+      if (!first || !last) return
+      if (Math.floor(b / barsPerRow) === Math.floor(nb / barsPerRow)) {
+        ctxDraw(new StaveTie({ firstNote: first, lastNote: last, firstIndexes: [0], lastIndexes: [0] }))
+      } else {
+        ctxDraw(new StaveTie({ firstNote: first, lastNote: null, firstIndexes: [0], lastIndexes: [0] }))
+        ctxDraw(new StaveTie({ firstNote: null, lastNote: last, firstIndexes: [0], lastIndexes: [0] }))
+      }
+    })
   })
 }

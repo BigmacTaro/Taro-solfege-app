@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import * as Tone from 'tone'
 import { micErrorMessage, startMic, type MicHandle, type PitchFrame } from './audio/mic'
+import { ensureAudioRunning, recreateAudioContext } from './audio/engine'
 import { playScore, type BeatInfo, type PlayHandle } from './audio/player'
 import { evaluate } from './eval/evaluate'
 import { soundingNameOfWrittenC } from './instruments'
@@ -32,10 +32,13 @@ const parseLevel = (v: string): Level => (LEVELS.includes(v as Level) ? (v as Le
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
+/** 再生を始めてから、最初の拍が1つも来ない(音声が動き出さない)と判断するまでの時間 */
+const WATCHDOG_MS = 3500
+
 /** 録音を止めてから判定するまでの余白(最後の音の余韻・遅れて届く音を拾う) */
 const TAIL_MS = 800
 
-export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean) => void }) {
+export function ScoreTab({ s, onLock, resetTick }: { s: Settings; onLock: (locked: boolean) => void; resetTick: number }) {
   const [level, setLevel] = useState<Level>(() => parseLevel(load<string>('level', 'beginner')))
   const [score, setScore] = useState(() => generateScore(undefined, level))
   const [tempo, setTempo] = useState(() => load('tempo', 80))
@@ -53,6 +56,9 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
   /** 開始のたびに増やす番号。中止・再開始された古い処理の続きが動かないようにする */
   const runIdRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const watchdogRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  /** 再生を始めてから、拍が1つでも来たか */
+  const gotBeatRef = useRef(false)
 
   useEffect(() => save('tempo', tempo), [tempo])
   useEffect(() => save('click', click), [click])
@@ -60,6 +66,11 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
   useEffect(() => micRef.current?.setGain(s.mic.gain), [s.mic.gain])
   useEffect(() => onLock(mode === 'practice' || mode === 'judging'), [mode, onLock])
   useEffect(() => () => halt(), [])
+  // 「音声をリセット」が押されたら、再生・録音を止める
+  useEffect(() => {
+    if (resetTick > 0) stop()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetTick])
 
   const busy = mode !== 'idle'
 
@@ -67,6 +78,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
   function halt() {
     runIdRef.current++
     clearTimeout(timerRef.current)
+    clearTimeout(watchdogRef.current)
     handleRef.current?.stop()
     handleRef.current = null
     micRef.current?.stop()
@@ -80,12 +92,37 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
     setBeat(null)
   }
 
-  const onBeat = (i: BeatInfo) => setBeat(i)
+  const onBeat = (i: BeatInfo) => {
+    gotBeatRef.current = true
+    setBeat(i)
+  }
+
+  /**
+   * 再生を始めても音声の時計が動かず、拍が1つも来ないとき(iPhoneのSafariで起こる)は、
+   * 止めて音声を作り直し、利用者に伝える。そのままだと、ブラウザを再起動するまで直らない
+   */
+  const armWatchdog = (myRun: number) => {
+    gotBeatRef.current = false
+    clearTimeout(watchdogRef.current)
+    watchdogRef.current = setTimeout(async () => {
+      if (runIdRef.current !== myRun || gotBeatRef.current) return
+      halt()
+      setMode('idle')
+      setStatus('')
+      setBeat(null)
+      setError(
+        '音声が動き出しませんでした(iPhoneのSafariで起きることがあります)。音声を作り直したので、もう一度押してください。' +
+          'それでも直らないときは、上の「マイク設定」を開いて「音声をリセット」を押してください。',
+      )
+      await recreateAudioContext()
+    }, WATCHDOG_MS)
+  }
 
   const playModel = async () => {
     halt()
     const myRun = runIdRef.current
-    await Tone.start()
+    // 音声の時計が動いているか確かめる(止まっていれば作り直す)。クリックの中の最初の await で呼ぶ
+    await ensureAudioRunning()
     if (runIdRef.current !== myRun) return
     setError('')
     setMode('melody')
@@ -94,6 +131,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
       transpose: s.instrument.offset,
       melody: true,
       click,
+      countInClick: click,
       onBeat,
       onEnd: () => {
         handleRef.current = null
@@ -102,6 +140,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
         setBeat(null)
       },
     })
+    armWatchdog(myRun)
   }
 
   const startPractice = async () => {
@@ -112,6 +151,9 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
     framesRef.current = []
     setMode('practice')
     setStatus('マイクを準備中…')
+    // 音声の時計が動いているか確かめる(止まっていれば作り直す)。クリックの中の最初の await で呼ぶ
+    await ensureAudioRunning()
+    if (runIdRef.current !== myRun) return
     try {
       const mic = await startMic(s.mic, (f) => framesRef.current.push(f))
       if (runIdRef.current !== myRun) {
@@ -140,6 +182,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
       lead: 0.4,
       melody: false,
       click,
+      countInClick: click,
       onBeat,
       onEnd: () => {
         if (runIdRef.current !== myRun) return
@@ -158,6 +201,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
       },
     })
     handleRef.current = handle
+    armWatchdog(myRun)
   }
 
   const changeScore = () => {
@@ -253,7 +297,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
         )}
       </div>
 
-      <p className="muted small mannerhint">📱 スマホの場合はマナーモードをOFFに</p>
+      <p className="muted small mannerhint">📱 マナーモードはOFFに(課題中のクリックは鳴ります)</p>
 
       <div className="tempo-row">
         <label htmlFor="tempo">
@@ -269,7 +313,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
           disabled={busy}
           onChange={(e) => setTempo(Number(e.target.value))}
         />
-        <label className={`chip${click ? ' on' : ''}${busy ? ' off' : ''}`} title="お手本・課題の間もクリック音を鳴らす">
+        <label className={`chip${click ? ' on' : ''}${busy ? ' off' : ''}`} title="OFFにすると、カウントも含めて無音になります(画面の丸の点滅だけで拍を示します)">
           <input type="checkbox" checked={click} disabled={busy} onChange={(e) => setClick(e.target.checked)} />
           <span aria-hidden="true">{click ? '✓' : '○'}</span> クリック音
         </label>
