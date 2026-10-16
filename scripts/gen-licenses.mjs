@@ -74,6 +74,7 @@ const fonts = [
   },
 ]
 const oflText = readFileSync(join(root, 'scripts', 'OFL-1.1.txt'), 'utf8').trim()
+const ownLicense = readFileSync(join(root, 'LICENSE'), 'utf8').trim()
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
@@ -139,7 +140,10 @@ const html = `<!doctype html>
       <h1>オープンソースのライセンス表記</h1>
       <p>このアプリは、次のオープンソースのソフトウェアと書体を使っています。それぞれの作者・権利者に感謝します。ライセンスの全文は、下にまとめています。</p>
       <p class="muted small">このページは、配布物に含まれるソフトウェアから、ビルドのたびに自動で作られます。</p>
-      <div class="note">本アプリ自体の著作権・利用条件の表記は、準備中です。</div>
+      <div class="note">本アプリ自体は <b>0BSD ライセンス</b>です(下の「本アプリのライセンス」)。ただし、このページに載せたソフトウェアと書体は、それぞれのライセンスに従います。</div>
+
+      <h2>本アプリのライセンス</h2>
+      <pre>${esc(ownLicense)}</pre>
 
       <h2>1. ソフトウェア</h2>
       <table>

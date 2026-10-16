@@ -87,7 +87,7 @@ SPEC.md                          設計メモ(仕様と決定事項)
 
 ## ライセンス
 
-- **オープンソースのソフトウェアと書体**: React、Tone.js、VexFlow など(MIT・0BSD)と、書体のBravura・Academico(SIL Open Font License 1.1)を使っています。
+- **このプロジェクト**(このリポジトリのソースコード・説明ページ・スクリーンショット)は、**[0BSD](LICENSE)** です。コピー・改変・再配布・商用利用を、著作権表示も含めて、制限なく自由にできます。
+- **使っているオープンソースのソフトウェアと書体**は、それぞれのライセンスに従います: React、Tone.js、VexFlow など(MIT・0BSD)と、書体のBravura・Academico(SIL Open Font License 1.1)。
   著作権表示とライセンス全文は、[公開版のライセンス表記](https://bigmactaro.github.io/Taro-solfege-app/licenses.html)(`public/licenses.html`)にあります。このページは、ビルドのたびに自動で作られます。
-- **このプロジェクト自体**のライセンスは、まだ決めていません(決まり次第、`LICENSE` を追加します)。
-  現時点では、明示的な許諾がない限り、複製・再配布・改変はできません。
+  これらを含む形で、このアプリを再配布するときは、上記のライセンス表記を、同じように残してください。
