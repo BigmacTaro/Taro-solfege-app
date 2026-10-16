@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { SPEC_URL } from './AboutDialog'
 import type { Settings } from './useSettings'
 
 /** 画面上部に常に表示するマイク感度。細かいマイク設定は「マイク設定」ボタンで開く */
@@ -6,12 +7,10 @@ export function Header({
   s,
   locked,
   onReset,
-  onAbout,
 }: {
   s: Settings
   locked: boolean
   onReset: () => Promise<void>
-  onAbout: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [resetMsg, setResetMsg] = useState('')
@@ -25,9 +24,16 @@ export function Header({
     <header className="topbar">
       <div className="toprow">
         <div className="reloadnote">動作がおかしくなったら「音声リセット」を押すかブラウザをリロードしてみてください</div>
-        <button className="secondary tinyreset infobtn" onClick={onAbout} aria-label="このアプリについて(使い方)" title="このアプリについて">
+        <a
+          className="tinyreset infobtn"
+          href={SPEC_URL}
+          target="_blank"
+          rel="noopener"
+          aria-label="くわしい説明・採点方式(別タブで開きます)"
+          title="くわしい説明・採点方式(別タブ)"
+        >
           ⓘ
-        </button>
+        </a>
         <button className="secondary tinyreset" onClick={doReset} title="音が出ない・課題が始まらないときに押す">
           🔧 {resetMsg || '音声リセット'}
         </button>
