@@ -17,3 +17,7 @@ body { background: var(--bg); color: var(--fg); }
 .meter .center { position: absolute; left: 50%; top: -4px; bottom: -4px; width: 2px; background: var(--muted); }
 .meter .needle { position: absolute; top: -4px; bottom: -4px; width: 4px; margin-left: -2px; background: #0a84ff; border-radius: 2px; }
 .history { width: 100%; height: auto; border-radius: 8px; }
+.settings { margin: 12px 0; padding: 8px 12px; border: 1px solid rgba(128,128,128,.3); border-radius: 8px; }
+.settings summary { cursor: pointer; min-height: 32px; }
+.settings label { display: block; margin: 8px 0; }
+.field input[type=range], .field select { display: block; width: 100%; margin-top: 6px; }
