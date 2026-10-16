@@ -67,6 +67,7 @@ function labelsOf(v: NoteVerdict): string[] {
   const signed = `${cents >= 0 ? '+' : ''}${cents}`
   // 外れたときは、実際に出した音名も添える。単位(セント)は凡例に書く
   out.push(v.pitchOk ? signed : `${v.sungName}${signed}`)
+  if (v.merged) out.push('連打')
   if (!v.timingOk) {
     const b = Math.abs(v.timingErrBeats!).toFixed(1)
     out.push(v.timingErrBeats! > 0 ? `遅${b}拍` : `早${b}拍`)
@@ -105,7 +106,7 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
     if (col === 0) {
       stave.addClef('treble')
       stave.addKeySignature(score.key.vex)
-      if (row === 0) stave.addTimeSignature(`${score.beatsPerBar}/4`)
+      if (row === 0) stave.addTimeSignature(`${score.meter.num}/${score.meter.den}`)
       stave.setMeasure(index + 1)
     }
     if (index === score.bars.length - 1) stave.setEndBarType(Barline.type.END)
@@ -145,12 +146,13 @@ function renderScore(el: HTMLDivElement, score: Score, width: number, verdicts?:
       } else i++
     }
 
-    const voice = new Voice({ numBeats: score.beatsPerBar, beatValue: 4 })
+    const voice = new Voice({ numBeats: score.meter.num, beatValue: score.meter.den })
     voice.addTickables(notes)
     // 調号に含まれる音には臨時記号を付けず、それ以外(短調の導音など)には付ける
     Accidental.applyAccidentals([voice], score.key.vex)
-    // 連桁は拍ごと(4分音符の長さ)にまとめる
-    const beams = Beam.generateBeams(notes, { groups: [new Fraction(1, 4)] })
+    // 連桁は拍ごとにまとめる(4/4と3/4は4分音符ごと、6/8は付点4分音符=八分音符3つごと)
+    const beamGroup = score.meter.den === 8 ? new Fraction(3, 8) : new Fraction(1, 4)
+    const beams = Beam.generateBeams(notes, { groups: [beamGroup] })
     new Formatter().joinVoices([voice]).format([voice], stave.getNoteEndX() - stave.getNoteStartX() - 16)
     voice.draw(ctx, stave)
     beams.forEach((b) => b.setContext(ctx).draw())

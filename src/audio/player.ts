@@ -79,10 +79,13 @@ function woodblockBuffer(sampleRate: number, accent: boolean): AudioBuffer {
 /** お手本の旋律の平均がこれより低いときは、オクターブ上げて鳴らす(MIDI 57 = A3 付近、約220Hz) */
 const MIN_MODEL_MEAN_MIDI = 57
 
-/** カウントイン(1小節)のあと、楽譜の全小節を再生する */
+/** カウントイン(4/4は4つ、3/4は3つ、6/8は2拍×2小節)のあと、楽譜の全小節を再生する */
 export function playScore(score: Score, opts: PlayOptions): PlayHandle {
+  // テンポは「メトロノームの1拍」の速さ(4/4と3/4は4分音符、6/8は付点4分音符)
   const spb = 60 / opts.tempo
   const perBar = score.beatsPerBar
+  const countIn = score.meter.countIn
+  const beatLen = score.meter.beatLen
   const draw = Tone.getDraw()
   // 再生用の音声セッションにする。消音スイッチが入っていても、メインのスピーカーから鳴る(iPhone)
   setAudioSession('playback')
@@ -112,13 +115,13 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
   const notify = (beatIndex: number, info: BeatInfo) =>
     draw.schedule(() => opts.onBeat?.(info), t0 + beatIndex * spb)
 
-  for (let k = 0; k < perBar; k++) {
-    click(k, k === 0)
-    notify(k, { phase: 'countin', bar: 0, beat: k })
+  for (let k = 0; k < countIn; k++) {
+    click(k, k % perBar === 0)
+    notify(k, { phase: 'countin', bar: 0, beat: k % perBar })
   }
 
   score.bars.forEach((bar, b) => {
-    const barStart = perBar + b * perBar
+    const barStart = countIn + b * perBar
     for (let k = 0; k < perBar; k++) {
       if (opts.click) click(barStart + k, k === 0)
       notify(barStart + k, { phase: 'play', bar: b, beat: k })
@@ -128,13 +131,14 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
     for (const n of bar) {
       if (n.step !== null) {
         const freq = Tone.Frequency(noteMidi(score, { step: n.step, alter: n.alter }) + (opts.transpose ?? 0) + lift, 'midi').toFrequency()
-        melodySynth.triggerAttackRelease(freq, n.beats * spb * 0.92, t0 + (barStart + pos) * spb)
+        // 音符の長さ・位置は4分音符=1の単位なので、メトロノームの拍(beatLen)で割って秒にする
+        melodySynth.triggerAttackRelease(freq, (n.beats / beatLen) * spb * 0.92, t0 + (barStart + pos / beatLen) * spb)
       }
       pos += n.beats
     }
   })
 
-  const total = perBar + score.bars.length * perBar
+  const total = countIn + score.bars.length * perBar
   let stopped = false
   let disposeTimer: ReturnType<typeof setTimeout> | undefined
 

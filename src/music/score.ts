@@ -1,4 +1,4 @@
-export type Level = 'beginner' | 'intermediate'
+export type Level = 'beginner' | 'intermediate' | 'advanced'
 export type Mode = 'major' | 'minor'
 
 export interface ScoreNote {
@@ -24,9 +24,34 @@ export interface KeyInfo {
   ja: string
 }
 
+export type MeterId = '4/4' | '3/4' | '6/8'
+
+/** 拍子。音符の長さ(beats)は、どの拍子でも4分音符=1の単位で表す */
+export interface Meter {
+  id: MeterId
+  num: number
+  den: number
+  /** 1小節の長さ(4分音符の数) */
+  barLen: number
+  /** メトロノームの1拍の長さ(4分音符の数)。6/8は付点4分音符(1.5)で数える */
+  beatLen: number
+  /** 強拍の位置(小節の頭からの長さ、4分音符の数) */
+  strong: number[]
+  /** カウントインのクリック数(4/4は4つ、3/4は3つ、6/8は2拍×2小節で4つ) */
+  countIn: number
+}
+
+export const METERS: Record<MeterId, Meter> = {
+  '4/4': { id: '4/4', num: 4, den: 4, barLen: 4, beatLen: 1, strong: [0, 2], countIn: 4 },
+  '3/4': { id: '3/4', num: 3, den: 4, barLen: 3, beatLen: 1, strong: [0], countIn: 3 },
+  '6/8': { id: '6/8', num: 6, den: 8, barLen: 3, beatLen: 1.5, strong: [0, 1.5], countIn: 4 },
+}
+
 export interface Score {
   key: KeyInfo
   level: Level
+  meter: Meter
+  /** 1小節のメトロノームの拍の数(4/4は4、3/4は3、6/8は2) */
   beatsPerBar: number
   bars: ScoreNote[][]
   seed: number
@@ -64,6 +89,19 @@ export const INTERMEDIATE_KEYS: KeyInfo[] = [
   makeKey('Gm', 'minor', 4, 0, 'ト短調'),
   makeKey('Cm', 'minor', 0, 0, 'ハ短調'),
 ]
+
+/** 調号4〜5つの調(上級で加わる) */
+const ADVANCED_ONLY_KEYS: KeyInfo[] = [
+  makeKey('E', 'major', 2, 0, 'ホ長調'),
+  makeKey('Ab', 'major', 5, -1, '変イ長調'),
+  makeKey('B', 'major', 6, 0, 'ロ長調'),
+  makeKey('Db', 'major', 1, -1, '変ニ長調'),
+  makeKey('C#m', 'minor', 0, 1, '嬰ハ短調'),
+  makeKey('Fm', 'minor', 3, 0, 'ヘ短調'),
+  makeKey('G#m', 'minor', 4, 1, '嬰ト短調'),
+  makeKey('Bbm', 'minor', 6, -1, '変ロ短調'),
+]
+export const ADVANCED_KEYS: KeyInfo[] = [...INTERMEDIATE_KEYS, ...ADVANCED_ONLY_KEYS]
 
 /** 記譜上の音のMIDI番号(移調楽器の補正は含まない) */
 export function noteMidi(score: Score, n: { step: number; alter?: number }): number {
@@ -117,6 +155,12 @@ export function keySignatureCount(key: KeyInfo): number {
   const counts: Record<string, number> = {
     C: 0, G: 1, D: 2, A: 3, F: 1, Bb: 2, Eb: 3,
     Am: 0, Em: 1, Bm: 2, 'F#m': 3, Dm: 1, Gm: 2, Cm: 3,
+    E: 4, Ab: 4, B: 5, Db: 5, 'C#m': 4, Fm: 4, 'G#m': 5, Bbm: 5,
   }
   return counts[key.vex] ?? 0
+}
+
+/** 1拍(メトロノームの拍)の長さを秒で表すとき、4分音符1つ分の秒数 */
+export function secondsPerQuarter(tempo: number, meter: Meter): number {
+  return 60 / tempo / meter.beatLen
 }

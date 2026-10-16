@@ -1,18 +1,23 @@
 import {
+  ADVANCED_KEYS,
   INTERMEDIATE_KEYS,
   KEY_C_MAJOR,
+  METERS,
   isOnBeat,
   type KeyInfo,
   type Level,
+  type Meter,
+  type MeterId,
   type Mode,
   type Score,
   type ScoreNote,
 } from './score'
 
 /**
- * 8小節の旋律の自動生成(4/4)。
- * - 初級: ハ長調、最短は八分音符。
- * - 中級: 調号3つまでの長調・短調。シンコペーションや三連符を含む。
+ * 8小節の旋律の自動生成。
+ * - 初級: ハ長調・4/4、最短は八分音符。
+ * - 中級: 4/4、調号3つまでの長調・短調。シンコペーションや三連符を含む。
+ * - 上級: 4/4・3/4・6/8、調号5つまでの長調・短調。十六分音符や付点のリズム、シンコペーション、三連符(6/8を除く)を含む。
  *
  * 楽典の考え方に沿って作る。
  * - 構造: 動機(2小節) → 前楽節(4小節、半終止) + 後楽節(4小節、完全終止) の大楽節。
@@ -47,7 +52,7 @@ const BASIC_MOTIFS: [Motif, number][] = [
   [[[2, 1, 0.5, 0.5], [1, 1, 2]], 1.5],
 ]
 
-/** 中級: シンコペーション(拍の裏から始まる音)を含む動機 */
+/** 中級: シンコペーション(拍の裏から始まる音)を含む動機(4/4) */
 const SYNCOPATED_MOTIFS: [Motif, number][] = [
   [[[0.5, 1, 1, 1, 0.5], [1, 1, 2]], 3],
   [[[1, 0.5, 1, 0.5, 1], [1, 1, 2]], 3],
@@ -58,7 +63,7 @@ const SYNCOPATED_MOTIFS: [Motif, number][] = [
   [[[1.5, 0.5, 1, 1], [0.5, 1, 0.5, 2]], 2],
 ]
 
-/** 中級: 三連符を含む動機。三連符は拍の頭から始まり、1拍(八分三連)か2拍(四分三連)でまとまる */
+/** 中級: 三連符を含む動機(4/4)。三連符は拍の頭から始まり、1拍(八分三連)か2拍(四分三連)でまとまる */
 const TRIPLET_MOTIFS: [Motif, number][] = [
   [[[1, T, T, T, 1, 1], [1, 1, 2]], 3],
   [[[1, 1, 1, T, T, T], [2, 2]], 2],
@@ -69,10 +74,81 @@ const TRIPLET_MOTIFS: [Motif, number][] = [
   [[[T, T, T, T, T, T, 1, 1], [1, 1, 2]], 1],
 ]
 
-const FINAL_RHYTHMS: [Rhythm, number][] = [
-  [[4], 0.65],
-  [[3, -1], 0.35],
+/** 上級: 十六分音符・付点のリズムを含む動機(4/4) */
+const SIXTEENTH_MOTIFS: [Motif, number][] = [
+  [[[1, 0.5, 0.25, 0.25, 1, 1], [1, 1, 2]], 3],
+  [[[0.5, 0.25, 0.25, 1, 1, 1], [1, 1, 2]], 3],
+  [[[0.75, 0.25, 1, 1, 1], [1, 1, 2]], 3],
+  [[[1, 1, 0.75, 0.25, 1], [2, 2]], 2],
+  [[[0.25, 0.25, 0.25, 0.25, 1, 1, 1], [1, 1, 2]], 2],
+  [[[0.5, 0.5, 0.75, 0.25, 1, 1], [1.5, 0.5, 2]], 2],
+  [[[1, 0.25, 0.25, 0.5, 1, 1], [1, 1, 2]], 2],
 ]
+
+/** 3/4(1小節=3拍) */
+const BASIC_MOTIFS_34: [Motif, number][] = [
+  [[[1, 1, 1], [1, 2]], 3],
+  [[[2, 1], [1, 2]], 2],
+  [[[1, 1, 1], [3]], 1.5],
+  [[[1.5, 0.5, 1], [1, 2]], 3],
+  [[[1, 0.5, 0.5, 1], [1, 2]], 3],
+  [[[0.5, 0.5, 1, 1], [2, 1]], 2],
+]
+const SYNCOPATED_MOTIFS_34: [Motif, number][] = [
+  [[[0.5, 1, 1, 0.5], [1, 2]], 3],
+  [[[1, 0.5, 1, 0.5], [2, 1]], 3],
+  [[[1.5, 1.5], [1, 2]], 2],
+]
+const TRIPLET_MOTIFS_34: [Motif, number][] = [
+  [[[1, T, T, T, 1], [1, 2]], 3],
+  [[[Q, Q, Q, 1], [1, 2]], 2],
+  [[[T, T, T, 1, 1], [2, 1]], 2],
+]
+const SIXTEENTH_MOTIFS_34: [Motif, number][] = [
+  [[[1, 0.5, 0.25, 0.25, 1], [1, 2]], 3],
+  [[[0.75, 0.25, 1, 1], [1, 2]], 3],
+  [[[0.5, 0.25, 0.25, 1, 1], [2, 1]], 2],
+]
+
+/** 6/8(1小節=付点4分音符2拍。長さは4分音符=1の単位なので、1小節=3) */
+const BASIC_MOTIFS_68: [Motif, number][] = [
+  [[[1.5, 1.5], [1.5, 1.5]], 3],
+  [[[1, 0.5, 1.5], [1.5, 1.5]], 3],
+  [[[0.5, 0.5, 0.5, 1.5], [1, 0.5, 1.5]], 2],
+  [[[1.5, 0.5, 0.5, 0.5], [1.5, 1.5]], 2],
+  [[[1, 0.5, 1, 0.5], [1.5, 1.5]], 2],
+  [[[0.5, 0.5, 0.5, 0.5, 0.5, 0.5], [1, 0.5, 1.5]], 1.5],
+]
+const SYNCOPATED_MOTIFS_68: [Motif, number][] = [
+  [[[0.5, 1, 0.5, 1], [1.5, 1.5]], 3],
+  [[[1, 1, 1], [1.5, 1.5]], 2],
+  [[[0.5, 1, 1.5], [1, 0.5, 1.5]], 2],
+]
+const SIXTEENTH_MOTIFS_68: [Motif, number][] = [
+  [[[0.75, 0.25, 0.5, 1.5], [1, 0.5, 1.5]], 3],
+  [[[1, 0.5, 0.25, 0.25, 0.5, 0.5], [1.5, 1.5]], 3],
+  [[[0.5, 0.25, 0.25, 0.5, 1.5], [1.5, 1.5]], 2],
+]
+
+/** 拍子ごとの動機の一覧。triplet は6/8にはない */
+interface MotifSet {
+  basic: [Motif, number][]
+  syncopated: [Motif, number][]
+  triplet: [Motif, number][]
+  sixteenth: [Motif, number][]
+}
+const MOTIF_SETS: Record<MeterId, MotifSet> = {
+  '4/4': { basic: BASIC_MOTIFS, syncopated: SYNCOPATED_MOTIFS, triplet: TRIPLET_MOTIFS, sixteenth: SIXTEENTH_MOTIFS },
+  '3/4': { basic: BASIC_MOTIFS_34, syncopated: SYNCOPATED_MOTIFS_34, triplet: TRIPLET_MOTIFS_34, sixteenth: SIXTEENTH_MOTIFS_34 },
+  '6/8': { basic: BASIC_MOTIFS_68, syncopated: SYNCOPATED_MOTIFS_68, triplet: [], sixteenth: SIXTEENTH_MOTIFS_68 },
+}
+
+/** 最後の小節(主音で終わる) */
+const FINAL_RHYTHMS: Record<MeterId, [Rhythm, number][]> = {
+  '4/4': [[[4], 0.65], [[3, -1], 0.35]],
+  '3/4': [[[3], 0.65], [[2, -1], 0.35]],
+  '6/8': [[[3], 0.65], [[1.5, -1.5], 0.35]],
+}
 
 // 各小節の和音の根音(I=0, IV=3, V=4)。1-2小節目と5-6小節目の和音は揃える
 const CHORD_PLANS: number[][] = [
@@ -232,6 +308,7 @@ function walk(
   rhythms: Rhythm[],
   barRoots: number[],
   mode: Mode,
+  meter: Meter,
   opts: {
     guide?: (number | undefined)[]
     guideWeight?: number
@@ -257,10 +334,12 @@ function walk(
         pos += beats
         continue
       }
-      // 強拍: 1拍目・3拍目の頭。拍の裏から始まる1拍以上の音(シンコペーション)も、長さで目立つので強拍として扱う
-      const onBeat = isOnBeat(pos)
+      // 強拍: 拍子ごとの強拍の頭(4/4は1・3拍目、3/4は1拍目、6/8は1・4拍目)。
+      // 拍の裏から始まる1拍以上の音(シンコペーション)も、長さで目立つので強拍として扱う
+      const onStrong = meter.strong.some((sp) => Math.abs(pos - sp) < 1e-6)
+      const onPulse = isOnBeat(pos / meter.beatLen)
       const onHalf = Math.abs(pos * 2 - Math.round(pos * 2)) < 1e-6
-      const strong = (onBeat && Math.round(pos) % 2 === 0) || (!onBeat && onHalf && beats >= 1)
+      const strong = onStrong || (!onPulse && onHalf && beats >= 1)
       const ev: EventCtx = {
         beats,
         strong,
@@ -355,31 +434,47 @@ function scoreMelody(bars: ScoreNote[][]): number {
 
 // ---------------------------------------------------------------- 生成
 
-function sampleOnce(rng: Rng, level: Level, mode: Mode): ScoreNote[][] | null {
+function sampleOnce(rng: Rng, level: Level, mode: Mode, meter: Meter): ScoreNote[][] | null {
   const parallel = rng() < 0.55
   const roots = CHORD_PLANS[Math.floor(rng() * CHORD_PLANS.length)]
 
-  // 中級は、シンコペーションか三連符を含む動機を主題にする
-  const special: [Motif, number][] = [...SYNCOPATED_MOTIFS, ...TRIPLET_MOTIFS]
-  const A = level === 'intermediate' ? weighted(rng, special) : weighted(rng, BASIC_MOTIFS)
-  const pool: [Motif, number][] =
-    level === 'intermediate' ? [...special, ...BASIC_MOTIFS.map(([m, w]): [Motif, number] => [m, w * 0.5])] : BASIC_MOTIFS
+  // 拍子と難易度に合う動機を選ぶ。中級は、シンコペーションか三連符を含む動機を主題にする。
+  // 上級は、十六分音符を含む動機を主題にし、後半(対照楽節)には他の特徴的な動機も使う
+  const set = MOTIF_SETS[meter.id]
+  const characteristic: [Motif, number][] = [...set.syncopated, ...set.triplet]
+  const basicHalf = set.basic.map(([m, w]): [Motif, number] => [m, w * 0.5])
+  let theme: [Motif, number][]
+  let pool: [Motif, number][]
+  if (level === 'advanced') {
+    theme = set.sixteenth
+    pool = [...set.sixteenth, ...characteristic, ...basicHalf]
+  } else if (level === 'intermediate') {
+    theme = characteristic
+    pool = [...characteristic, ...basicHalf]
+  } else {
+    theme = set.basic
+    pool = set.basic
+  }
+  const A = weighted(rng, theme)
   const B = parallel ? A : weighted(rng, pool.filter(([m]) => m !== A))
 
   // 4小節目は、ときどきフレーズ末に休符(息継ぎ)を入れる
   let r4 = B[1]
   const last = r4[r4.length - 1]
-  if (last >= 2 && rng() < 0.2) r4 = [...r4.slice(0, -1), last - 1, -1]
+  if (last >= 1.5 && rng() < 0.2) {
+    const rest = last >= 2 ? 1 : 0.5
+    r4 = [...r4.slice(0, -1), last - rest, -rest]
+  }
 
   const r7 = B[0][B[0].length - 1] >= 1 ? B[0] : A[1]
   const rhythms: Rhythm[] = [A[0], A[1], B[0], r4, A[0], A[1], r7]
 
   const st: State = { prev: null, prev2: null, prevRaised: false, pending: null }
-  const first = walk(rng, st, rhythms.slice(0, 2), roots.slice(0, 2), mode, { startSteps: new Set([0, 2, 4]) })
+  const first = walk(rng, st, rhythms.slice(0, 2), roots.slice(0, 2), mode, meter, { startSteps: new Set([0, 2, 4]) })
   if (!first) return null
 
   // 前楽節の後半: 平行楽節なら動機を模倣する。終わりは第5音か第2音(半終止)
-  const second = walk(rng, st, rhythms.slice(2, 4), roots.slice(2, 4), mode, {
+  const second = walk(rng, st, rhythms.slice(2, 4), roots.slice(2, 4), mode, meter, {
     guide: parallel ? first.intervals : undefined,
     guideWeight: 5,
     endSteps: new Set([1, 4]),
@@ -399,12 +494,12 @@ function sampleOnce(rng: Rng, level: Level, mode: Mode): ScoreNote[][] | null {
     st.pending = null
     third = { bars, intervals: first.intervals }
   } else {
-    third = walk(rng, st, rhythms.slice(4, 6), roots.slice(4, 6), mode, { guide: first.intervals, guideWeight: 6 })
+    third = walk(rng, st, rhythms.slice(4, 6), roots.slice(4, 6), mode, meter, { guide: first.intervals, guideWeight: 6 })
   }
   if (!third) return null
 
   // 終止の前: 最後の主音へ順次進行で解決する音(第2音か導音)で止まる
-  const fourth = walk(rng, st, rhythms.slice(6, 7), roots.slice(6, 7), mode, {
+  const fourth = walk(rng, st, rhythms.slice(6, 7), roots.slice(6, 7), mode, meter, {
     guide: parallel ? second.intervals : undefined,
     guideWeight: 2,
     endSteps: new Set([1, -1, 6]),
@@ -413,7 +508,7 @@ function sampleOnce(rng: Rng, level: Level, mode: Mode): ScoreNote[][] | null {
 
   const lastStep = st.prev!
   const tonic = Math.abs(lastStep - 7) < Math.abs(lastStep) ? 7 : 0
-  const finalRhythm = weighted(rng, FINAL_RHYTHMS)
+  const finalRhythm = weighted(rng, FINAL_RHYTHMS[meter.id])
   const finalBar = finalRhythm.map((e) => (e < 0 ? { beats: -e, step: null } : { beats: e, step: tonic }))
 
   return [...first.bars, ...second.bars, ...third.bars, ...fourth.bars, finalBar]
@@ -421,20 +516,27 @@ function sampleOnce(rng: Rng, level: Level, mode: Mode): ScoreNote[][] | null {
 
 function pickKey(rng: Rng, level: Level): KeyInfo {
   if (level === 'beginner') return KEY_C_MAJOR
-  // 長調と短調を同じ確率で、その中から調を選ぶ
+  // 長調と短調を同じ確率で、その中から調を選ぶ(上級は調号5つまで)
   const mode: Mode = rng() < 0.5 ? 'major' : 'minor'
-  const keys = INTERMEDIATE_KEYS.filter((k) => k.mode === mode)
+  const keys = (level === 'advanced' ? ADVANCED_KEYS : INTERMEDIATE_KEYS).filter((k) => k.mode === mode)
   return keys[Math.floor(rng() * keys.length)]
+}
+
+/** 初級・中級は4/4。上級は4/4・3/4・6/8から選ぶ */
+function pickMeter(rng: Rng, level: Level): Meter {
+  if (level !== 'advanced') return METERS['4/4']
+  return METERS[weighted<MeterId>(rng, [['4/4', 0.4], ['3/4', 0.3], ['6/8', 0.3]])]
 }
 
 export function generateScore(seed = Math.floor(Math.random() * 2 ** 31), level: Level = 'beginner'): Score {
   const rng = mulberry32(seed)
   const key = pickKey(rng, level)
+  const meter = pickMeter(rng, level)
   let best: ScoreNote[][] | null = null
   let bestScore = -Infinity
   let found = 0
   for (let attempt = 0; attempt < CANDIDATES * 10 && found < CANDIDATES; attempt++) {
-    const bars = sampleOnce(rng, level, key.mode)
+    const bars = sampleOnce(rng, level, key.mode, meter)
     if (!bars) continue
     found++
     const sc = scoreMelody(bars)
@@ -444,5 +546,5 @@ export function generateScore(seed = Math.floor(Math.random() * 2 ** 31), level:
     }
   }
   if (!best) throw new Error('楽譜を生成できませんでした')
-  return { key, level, beatsPerBar: 4, bars: best, seed }
+  return { key, level, meter, beatsPerBar: meter.barLen / meter.beatLen, bars: best, seed }
 }
