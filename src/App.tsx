@@ -28,7 +28,7 @@ export function App() {
             disabled={locked}
             onClick={() => setTab('score')}
           >
-            楽譜
+            譜読み課題
           </button>
           <button
             role="tab"
