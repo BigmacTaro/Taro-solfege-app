@@ -1,5 +1,5 @@
 import type { PitchFrame } from '../audio/mic'
-import { stepToMidi, type Score } from '../music/score'
+import { noteMidi, type Score } from '../music/score'
 import { NOTE_NAMES_JA } from '../pitch'
 
 export interface EvalParams {
@@ -211,7 +211,7 @@ export function buildExpected(score: Score, p: Pick<EvalParams, 'tempo' | 't0' |
         bar: b,
         index: i,
         isRest: n.step === null,
-        midi: n.step === null ? null : stepToMidi(n.step) + p.transpose,
+        midi: n.step === null ? null : noteMidi(score, { step: n.step, alter: n.alter }) + p.transpose,
         beats: n.beats,
         start: bars0 + (b * score.beatsPerBar + pos) * spb,
         dur: n.beats * spb,

@@ -1,5 +1,6 @@
 import * as Tone from 'tone'
 import { detectPitch } from '../pitch'
+import { setAudioSession } from './session'
 
 export interface MicSettings {
   /** ソフトウェアでの増幅(iPhoneなど入力が小さい端末向け) */
@@ -41,6 +42,8 @@ export async function startMic(
   onFrame: (frame: PitchFrame) => void,
 ): Promise<MicHandle> {
   await Tone.start()
+  // マイクを使う間は録音を含む音声セッションにする(iPhone)。使い終わったら再生用に戻す
+  setAudioSession('play-and-record')
   const ctx = Tone.getContext().rawContext as unknown as AudioContext
   // echoCancellation は常に切る。AGC/ノイズ抑制は端末によって効き方が違うので設定で切り替える
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -88,6 +91,7 @@ export async function startMic(
       stream.getTracks().forEach((t) => t.stop())
       source.disconnect()
       gainNode.disconnect()
+      setAudioSession('playback')
     },
   }
 }

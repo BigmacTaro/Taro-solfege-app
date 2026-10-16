@@ -1,5 +1,6 @@
 import * as Tone from 'tone'
-import { stepToMidi, type Score } from '../music/score'
+import { noteMidi, type Score } from '../music/score'
+import { setAudioSession } from './session'
 
 export interface BeatInfo {
   phase: 'countin' | 'play'
@@ -75,11 +76,24 @@ function woodblockBuffer(sampleRate: number, accent: boolean): AudioBuffer {
   return buffer
 }
 
+/** お手本の旋律の平均がこれより低いときは、オクターブ上げて鳴らす(MIDI 57 = A3 付近、約220Hz) */
+const MIN_MODEL_MEAN_MIDI = 57
+
 /** カウントイン(1小節)のあと、楽譜の全小節を再生する */
 export function playScore(score: Score, opts: PlayOptions): PlayHandle {
   const spb = 60 / opts.tempo
   const perBar = score.beatsPerBar
   const draw = Tone.getDraw()
+  // 再生用の音声セッションにする。消音スイッチが入っていても、メインのスピーカーから鳴る(iPhone)
+  setAudioSession('playback')
+
+  // 移調楽器の実音は、スマホのスピーカーでは出せないほど低くなることがある(テナーサックスなど)。
+  // 判定はオクターブ違いを同じ音として扱うので、お手本は聞こえる高さまで1オクターブ単位で上げて鳴らす
+  const soundingMidis = score.bars.flatMap((bar) =>
+    bar.flatMap((n) => (n.step === null ? [] : [noteMidi(score, { step: n.step, alter: n.alter }) + (opts.transpose ?? 0)])),
+  )
+  const meanMidi = soundingMidis.reduce((a, b) => a + b, 0) / Math.max(1, soundingMidis.length)
+  const lift = meanMidi < MIN_MODEL_MEAN_MIDI ? 12 * Math.ceil((MIN_MODEL_MEAN_MIDI - meanMidi) / 12) : 0
 
   const rate = Tone.getContext().sampleRate
   const clickNormal = new Tone.Player(new Tone.ToneAudioBuffer(woodblockBuffer(rate, false))).toDestination()
@@ -113,7 +127,7 @@ export function playScore(score: Score, opts: PlayOptions): PlayHandle {
     let pos = 0
     for (const n of bar) {
       if (n.step !== null) {
-        const freq = Tone.Frequency(stepToMidi(n.step) + (opts.transpose ?? 0), 'midi').toFrequency()
+        const freq = Tone.Frequency(noteMidi(score, { step: n.step, alter: n.alter }) + (opts.transpose ?? 0) + lift, 'midi').toFrequency()
         melodySynth.triggerAttackRelease(freq, n.beats * spb * 0.92, t0 + (barStart + pos) * spb)
       }
       pos += n.beats

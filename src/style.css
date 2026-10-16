@@ -165,3 +165,20 @@ button.gear { min-height: 38px; padding: 4px 10px; white-space: nowrap; font-siz
 }
 .tabs .tab { flex: 0 0 auto; padding: 4px 14px; }
 .instsel { flex: 1 1 0; }
+
+/* メトロノームの可視化 */
+.beatdots { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.beatlabel { font-size: 1.1rem; font-weight: 700; color: var(--muted); min-width: 5.2em; text-align: right; }
+.dot { width: 22px; height: 22px; border-radius: 50%; background: var(--disabled-bg); transition: background 60ms, transform 60ms; }
+.dot.first { width: 30px; height: 30px; }
+.dot.on { background: var(--go); transform: scale(1.2); box-shadow: 0 0 10px var(--go); }
+.beatdots.countin .dot.on { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
+.beatdots.countin .beatlabel { color: var(--warn); }
+
+/* 難易度の切り替え */
+.seg { display: flex; flex: 0 0 auto; border-radius: 10px; overflow: hidden; }
+.seg button { border-radius: 0; min-height: 40px; padding: 4px 10px; font-size: 0.95rem; background: var(--accent-soft); color: var(--accent); }
+.seg button.on { background: var(--accent); color: #fff; }
+.seg button:disabled { background: var(--disabled-bg); color: var(--disabled-fg); }
+
+.mannerhint { margin: 0 0 2px; }
