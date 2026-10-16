@@ -312,7 +312,7 @@ export function ScoreTab({ s, onLock, resetTick }: { s: Settings; onLock: (locke
             <span className="status">{status}</span>
           ) : (
             <span className="notice">
-              「課題開始」を押すと<b>カウントが{score.meter.countIn}つ</b>流れます。そのあとで、<b>演奏(歌唱)を始めてください</b>。
+              「課題開始」を押すと<b>カウントが{score.meter.countIn}つ</b>流れます。そのあとで、<b>演奏(歌唱)を始めてください</b>。最後まで終えると採点します。
             </span>
           )}
         </div>
