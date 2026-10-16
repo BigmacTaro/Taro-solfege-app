@@ -1,13 +1,36 @@
 {
   "name": "solfege-app",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
+  "description": "楽譜を見て歌う・演奏すると、音の高さとタイミングを自動で採点する、譜読み(ソルフェージュ)の自習Webアプリ",
+  "homepage": "https://bigmactaro.github.io/Taro-solfege-app/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BigmacTaro/Taro-solfege-app.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BigmacTaro/Taro-solfege-app/issues"
+  },
+  "keywords": [
+    "solfege",
+    "ear-training",
+    "sight-singing",
+    "music-education",
+    "pitch-detection",
+    "web-audio",
+    "react",
+    "vite"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite --host",
     "build": "node scripts/gen-licenses.mjs && tsc --noEmit && vite build",
     "preview": "vite preview --host",
-    "licenses": "node scripts/gen-licenses.mjs"
+    "licenses": "node scripts/gen-licenses.mjs",
+    "test": "node scripts/test.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",

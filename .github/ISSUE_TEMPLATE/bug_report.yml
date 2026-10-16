@@ -1,0 +1,44 @@
+name: 不具合の報告
+description: 動かない・おかしい動作を報告する
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 何が起きましたか
+      description: 画面の表示、エラーメッセージなど。「音が出ない」「課題が始まらない」などでも構いません。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現の手順
+      description: どの画面で、何を押したか。
+      placeholder: |
+        1. 難易度を「上級」にする
+        2. 「課題開始」を押す
+        3. ...
+  - type: input
+    id: device
+    attributes:
+      label: 端末とOS
+      placeholder: iPhone 15 Pro / iOS 18.x、Pixel 8 / Android 15、MacBook / macOS 15 など
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: ブラウザ
+      placeholder: Safari、Chrome など
+    validations:
+      required: true
+  - type: input
+    id: score
+    attributes:
+      label: 楽譜の番号(わかれば)
+      description: 楽譜の上に「番号 123456789」と表示されています。同じ楽譜を再現できます。
+  - type: textarea
+    id: extra
+    attributes:
+      label: そのほか
+      description: スクリーンショット、イヤホンの有無、マイク感度の設定など。
