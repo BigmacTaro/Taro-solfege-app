@@ -11,7 +11,7 @@ import { ScoreView } from './ScoreView'
 import { load, save } from './storage'
 import type { Settings } from './useSettings'
 
-type Mode = 'idle' | 'melody' | 'metronome' | 'practice' | 'judging'
+type Mode = 'idle' | 'melody' | 'practice' | 'judging'
 
 interface Run {
   score: Score
@@ -74,18 +74,18 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
   const onBeat = (i: BeatInfo) =>
     setStatus(i.phase === 'countin' ? `カウント ${i.beat + 1}` : `${i.bar + 1}小節目`)
 
-  const play = async (kind: 'melody' | 'metronome') => {
+  const playModel = async () => {
     halt()
     const myRun = runIdRef.current
     await Tone.start()
     if (runIdRef.current !== myRun) return
     setError('')
-    setMode(kind)
+    setMode('melody')
     handleRef.current = playScore(score, {
       tempo,
       transpose: s.instrument.offset,
-      melody: kind === 'melody',
-      click: kind === 'metronome' || click,
+      melody: true,
+      click,
       onBeat,
       onEnd: () => {
         handleRef.current = null
@@ -206,7 +206,7 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
       </div>
 
       <div className="controls">
-        {mode === 'melody' || mode === 'metronome' ? (
+        {mode === 'melody' ? (
           <button className="danger" onClick={stop}>
             ■ 停止
           </button>
@@ -215,11 +215,8 @@ export function ScoreTab({ s, onLock }: { s: Settings; onLock: (locked: boolean)
             <button className="secondary" onClick={changeScore} disabled={busy}>
               新しい楽譜
             </button>
-            <button className="secondary" onClick={() => play('melody')} disabled={busy}>
-              ▶ お手本
-            </button>
-            <button className="secondary" onClick={() => play('metronome')} disabled={busy}>
-              ♩ メトロノーム
+            <button className="secondary" onClick={playModel} disabled={busy}>
+              ▶ お手本を聴く
             </button>
           </>
         )}
