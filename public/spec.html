@@ -45,6 +45,13 @@
       nav.toc ol { margin: 4px 0; padding-left: 1.4em; }
       a { color: var(--accent); }
       .back { display: inline-block; margin: 4px 0 8px; }
+      .figure-row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; margin: 14px 0; }
+      .figure-row figure { margin: 0; flex: 0 1 330px; max-width: 100%; }
+      .figure-row img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; }
+      .figure-row figcaption { font-size: 0.82rem; color: var(--muted); margin-top: 4px; }
+      ol.legend { list-style: none; counter-reset: n; padding: 0; margin: 0; flex: 1 1 260px; }
+      ol.legend li { counter-increment: n; margin: 0 0 10px; padding-left: 2em; position: relative; font-size: 0.94rem; line-height: 1.55; }
+      ol.legend li::before { content: counter(n); position: absolute; left: 0; top: 0.1em; width: 1.5em; height: 1.5em; border-radius: 50%; background: #e5322d; color: #fff; font-size: 0.8em; font-weight: 700; display: flex; align-items: center; justify-content: center; }
       code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
     </style>
   </head>
@@ -77,6 +84,22 @@
         <li><b>最後まで終えると採点</b>され、楽譜に結果が色分けで出ます。</li>
         <li>「別の楽譜に変える」で、新しい楽譜に変えて、くり返し練習できます。</li>
       </ol>
+      <div class="figure-row">
+        <figure>
+          <img src="./img/screen-main.jpg" alt="アプリの画面(スマホ)。画面の各部分に、1から8の番号が付いています" width="390" height="800" />
+          <figcaption>画面の見かた(スマホの縦画面)</figcaption>
+        </figure>
+        <ol class="legend">
+          <li><b>マイク感度</b>: 声や楽器の音が小さいときは、右へ動かして上げます(スマホは×3.0以上がめやす)。</li>
+          <li><b>マイク設定</b>(自動音量調整・入力の遅れの補正・上級者モードなど)。左隣の<b>「音声リセット」</b>は、音が出ない・始まらないときに押します。<b>「ⓘ」</b>は、この説明ページです。</li>
+          <li><b>タブ</b>(譜読み課題・マイクテスト)と、<b>楽器</b>の選択。トランペットやサックスなどは、ここで選びます。</li>
+          <li><b>お手本を聴く</b>と、<b>難易度</b>(初級・中級・上級・カスタム)の切り替え。</li>
+          <li><b>テンポ</b>と、<b>クリック音</b>のON/OFF(OFFにすると、カウントも含めて無音になります)。</li>
+          <li>今の楽譜の難易度・調・拍子と、<b>「別の楽譜に変える」</b>。</li>
+          <li><b>課題開始</b>: 押すとカウントが流れます。そのあとで演奏し、最後まで終えると採点されます。</li>
+          <li><b>楽譜</b>。8小節です。</li>
+        </ol>
+      </div>
       <div class="note">
         スマホでは、①マナーモードをOFFにする、②マイク感度を×3.0以上にする(音を拾いにくいとき)、③イヤホンを使う(スピーカーの音がマイクに入るのを防ぐ)ことをおすすめします。
       </div>
@@ -140,6 +163,21 @@
       <p>マイクやBluetoothイヤホンの遅れで、全体に「遅れ」が出ることがあります。結果に、平均のずれが出たときは、「この分を補正する」で、補正できます。「マイク設定」の「入力の遅れの補正」で、手動でも調整できます。</p>
 
       <h2 id="result">4. 結果の見方</h2>
+      <div class="figure-row">
+        <figure>
+          <img src="./img/screen-result.jpg" alt="採点後の画面。楽譜の音符が緑・赤・橙・灰色に色分けされ、点数とグラフが表示されています" width="422" height="1246" />
+          <figcaption>採点後の画面の例(誤りを混ぜた演奏を採点したもの)</figcaption>
+        </figure>
+        <ol class="legend">
+          <li><b>点数</b>と内訳。音高とタイミングの正解数、聞こえず・余計な音などの回数が出ます。</li>
+          <li><b>緑の音符</b>は、正解です。下の小さな数字は、音高のずれです(セント。100が半音)。</li>
+          <li><b>赤の音符</b>は、音高が違います。実際に出した音名と、ずれが出ます(例: ド♯+80)。</li>
+          <li><b>橙の音符</b>は、タイミングや長さの指摘です。ずれた拍数が出ます(例: 遅0.6拍)。</li>
+          <li><b>灰色の音符</b>は、聞こえず(その音が聞き取れなかった)です。</li>
+          <li><b>ミスタッチ(無視)</b>: 一瞬だけ別の音が鳴った回数です。減点はしません。</li>
+          <li><b>グラフ</b>: 灰色の帯が「期待した音」、点が「実際に出した音の高さ」です(緑=合っている、赤=ずれている)。</li>
+        </ol>
+      </div>
       <table>
         <tr><th>色</th><th>意味</th></tr>
         <tr><td style="color:#1e9e5a"><b>緑</b></td><td>音高とタイミングが、正解</td></tr>
@@ -191,8 +229,21 @@
       </ul>
 
       <h2 id="rights">9. 権利・ライセンス</h2>
-      <p class="note">準備中です。著作権、利用条件、使用しているソフトウェアのライセンス表記などは、今後ここに記載します。</p>
-      <p class="muted">使用している主なオープンソースのソフトウェア: Tone.js(音の再生)、VexFlow(楽譜の表示)、React。</p>
+      <h3>オープンソースのソフトウェアと書体</h3>
+      <p>このアプリは、次のオープンソースのソフトウェアと書体を使っています。それぞれの作者・権利者に感謝します。</p>
+      <table>
+        <tr><th>名前</th><th>用途</th><th>ライセンス</th></tr>
+        <tr><td>React / React DOM / scheduler</td><td>画面の表示</td><td>MIT</td></tr>
+        <tr><td>Tone.js</td><td>音の再生、メトロノーム、マイクの音声処理の基盤</td><td>MIT</td></tr>
+        <tr><td>standardized-audio-context / automation-events(Tone.jsが使用)</td><td>ブラウザ間の音声機能の差を吸収</td><td>MIT</td></tr>
+        <tr><td>VexFlow</td><td>楽譜の表示</td><td>MIT</td></tr>
+        <tr><td>@babel/runtime / tslib</td><td>上記ソフトウェアが使う補助コード</td><td>MIT / 0BSD</td></tr>
+        <tr><td>Bravura(Steinberg Media Technologies GmbH)</td><td>楽譜の記号の書体</td><td>SIL Open Font License 1.1</td></tr>
+        <tr><td>Academico(Steinberg Media Technologies GmbH)</td><td>楽譜の文字の書体</td><td>SIL Open Font License 1.1</td></tr>
+      </table>
+      <p><b><a href="./licenses.html">オープンソースのライセンス表記(著作権表示とライセンス全文)</a></b>に、バージョンごとの一覧と全文があります。このページは、ビルドのたびに、配布物に含まれるソフトウェアから自動で作られます。</p>
+      <h3>本アプリ自体</h3>
+      <p class="note">本アプリ自体の著作権・利用条件の表記は、準備中です。決まり次第、ここに記載します。</p>
 
       <p><a class="back" href="./">← アプリに戻る</a></p>
     </main>

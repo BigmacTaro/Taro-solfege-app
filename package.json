@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host"
+    "build": "node scripts/gen-licenses.mjs && tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "licenses": "node scripts/gen-licenses.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",

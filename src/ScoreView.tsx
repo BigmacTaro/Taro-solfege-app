@@ -13,7 +13,7 @@ import {
   StaveTie,
   Tuplet,
   Voice,
-} from 'vexflow'
+} from 'vexflow/bravura'
 import type { NoteVerdict } from './eval/evaluate'
 import { beatsToVexDuration, isTriplet, keySignatureCount, noteVexKey, type Score } from './music/score'
 
