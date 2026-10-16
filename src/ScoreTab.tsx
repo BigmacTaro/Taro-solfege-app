@@ -372,6 +372,16 @@ export function ScoreTab({ s, onLock, resetTick }: { s: Settings; onLock: (locke
         </p>
       )}
 
+      <div className="scorebar">
+        <div className="scoreinfo">
+          <b>{LEVEL_LABEL[(run ? run.score : score).level]}</b>・{(run ? run.score : score).key.ja}・
+          {(run ? run.score : score).meter.id}
+          <span className="muted small"> 番号 {run ? run.score.seed : score.seed}</span>
+        </div>
+        <button className="secondary newscore" onClick={changeScore} disabled={busy}>
+          🔄 別の楽譜に変える
+        </button>
+      </div>
       <div className="startcard">
         {mode === 'practice' || mode === 'judging' ? (
           <button className="start danger" onClick={stop} disabled={mode === 'judging'}>
@@ -396,16 +406,6 @@ export function ScoreTab({ s, onLock, resetTick }: { s: Settings; onLock: (locke
         {error && <p className="error">{error}</p>}
       </div>
 
-      <div className="scorebar">
-        <div className="scoreinfo">
-          <b>{LEVEL_LABEL[(run ? run.score : score).level]}</b>・{(run ? run.score : score).key.ja}・
-          {(run ? run.score : score).meter.id}
-          <span className="muted small"> 番号 {run ? run.score.seed : score.seed}</span>
-        </div>
-        <button className="secondary newscore" onClick={changeScore} disabled={busy}>
-          🔄 別の楽譜に変える
-        </button>
-      </div>
       <ScoreView score={run && result ? run.score : score} verdicts={result?.verdicts} />
 
       {run && result && (
