@@ -1,9 +1,14 @@
 import {
   ADVANCED_KEYS,
+  DEFAULT_CUSTOM,
   INTERMEDIATE_KEYS,
   KEY_C_MAJOR,
   METERS,
+  churchKeys,
   isOnBeat,
+  isTriplet,
+  keySignatureCount,
+  type CustomOptions,
   type KeyInfo,
   type Level,
   type Meter,
@@ -67,6 +72,9 @@ const SYNCOPATED_MOTIFS: [Motif, number][] = [
   [[[1, 1, 0.5, 1, 0.5], [1, 1, 2]], 2],
   [[[0.5, 1, 1.5, 1], [1, 1, 2]], 2],
   [[[1.5, 0.5, 1, 1], [0.5, 1, 0.5, 2]], 2],
+  [[[0.5, 1, 0.5, 0.5, 0.5, 1], [0.5, 1, 0.5, 2]], 3],
+  [[[0.5, 0.5, 1, 0.5, 0.5, 1], [1, 0.5, 0.5, 2]], 3],
+  [[[1.5, 0.5, 0.5, 0.5, 0.5, 0.5], [0.5, 1, 0.5, 2]], 2],
 ]
 
 /** 中級: 三連符を含む動機(4/4)。三連符は拍の頭から始まり、1拍(八分三連)か2拍(四分三連)でまとまる */
@@ -78,17 +86,24 @@ const TRIPLET_MOTIFS: [Motif, number][] = [
   [[[1, 1, Q, Q, Q], [1, 1, 2]], 2],
   [[[1, T, T, T, 2], [1, T, T, T, 2]], 2],
   [[[T, T, T, T, T, T, 1, 1], [1, 1, 2]], 1],
+  [[[0.5, 0.5, T, T, T, 1, 1], [1, T, T, T, 2]], 3],
+  [[[T, T, T, 0.5, 0.5, T, T, T, 1], [0.5, 0.5, T, T, T, 2]], 3],
 ]
 
 /** 上級: 十六分音符・付点のリズムを含む動機(4/4) */
 const SIXTEENTH_MOTIFS: [Motif, number][] = [
-  [[[1, 0.5, 0.25, 0.25, 1, 1], [1, 1, 2]], 3],
-  [[[0.5, 0.25, 0.25, 1, 1, 1], [1, 1, 2]], 3],
-  [[[0.75, 0.25, 1, 1, 1], [1, 1, 2]], 3],
-  [[[1, 1, 0.75, 0.25, 1], [2, 2]], 2],
-  [[[0.25, 0.25, 0.25, 0.25, 1, 1, 1], [1, 1, 2]], 2],
-  [[[0.5, 0.5, 0.75, 0.25, 1, 1], [1.5, 0.5, 2]], 2],
-  [[[1, 0.25, 0.25, 0.5, 1, 1], [1, 1, 2]], 2],
+  // 付点八分+十六分、十六分の連打、三連符を織り交ぜた、音符の細かい動機。2小節目も細かく、終止の音(最後)だけが長い
+  [[[0.75, 0.25, 0.75, 0.25, 1, 1], [0.75, 0.25, 0.5, 0.5, 1, 1]], 4],
+  [[[0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 1, 1], [1, 0.5, 0.25, 0.25, 2]], 4],
+  [[[1, T, T, T, 0.75, 0.25, 1], [T, T, T, 1, 2]], 3],
+  [[[0.25, 0.25, 0.25, 0.25, 0.75, 0.25, 0.5, 0.5, 1], [0.75, 0.25, 0.5, 0.5, 1, 1]], 3],
+  [[[T, T, T, 0.75, 0.25, 0.5, 0.5, 1], [0.5, 0.25, 0.25, 0.75, 0.25, 2]], 3],
+  [[[0.5, 0.75, 0.25, 0.5, 0.5, 0.5, 1], [0.75, 0.25, 1.5, 0.5, 1]], 3],
+  [[[1.5, 0.25, 0.25, 0.5, 0.5, 0.5, 0.5], [1, 0.5, 0.25, 0.25, 2]], 2],
+  [[[0.75, 0.25, T, T, T, 0.5, 0.5, 1], [0.75, 0.25, 0.5, 0.5, 1, 1]], 3],
+  [[[Q, Q, Q, 0.75, 0.25, 1], [1, 0.5, 0.25, 0.25, 2]], 2],
+  [[[0.5, 0.25, 0.25, 1, 0.75, 0.25, 1], [0.75, 0.25, 0.5, 0.5, 1, 1]], 3],
+  [[[0.25, 0.5, 0.25, 1, 0.5, 0.25, 0.25, 1], [0.75, 0.25, 1.5, 0.5, 1]], 3],
 ]
 
 /** 3/4(1小節=3拍) */
@@ -111,9 +126,11 @@ const TRIPLET_MOTIFS_34: [Motif, number][] = [
   [[[T, T, T, 1, 1], [2, 1]], 2],
 ]
 const SIXTEENTH_MOTIFS_34: [Motif, number][] = [
-  [[[1, 0.5, 0.25, 0.25, 1], [1, 2]], 3],
-  [[[0.75, 0.25, 1, 1], [1, 2]], 3],
-  [[[0.5, 0.25, 0.25, 1, 1], [2, 1]], 2],
+  [[[0.75, 0.25, 0.75, 0.25, 1], [0.75, 0.25, 2]], 4],
+  [[[0.5, 0.25, 0.25, T, T, T, 1], [1, 0.5, 0.25, 0.25, 1]], 3],
+  [[[0.25, 0.25, 0.5, 0.75, 0.25, 1], [T, T, T, 2]], 3],
+  [[[T, T, T, 0.75, 0.25, 1], [0.75, 0.25, 2]], 3],
+  [[[0.5, 0.25, 0.25, 0.5, 0.5, 1], [1, 0.5, 0.25, 0.25, 1]], 3],
 ]
 
 /** 6/8(1小節=付点4分音符2拍。長さは4分音符=1の単位なので、1小節=3) */
@@ -131,9 +148,46 @@ const SYNCOPATED_MOTIFS_68: [Motif, number][] = [
   [[[0.5, 1, 1.5], [1, 0.5, 1.5]], 2],
 ]
 const SIXTEENTH_MOTIFS_68: [Motif, number][] = [
-  [[[0.75, 0.25, 0.5, 1.5], [1, 0.5, 1.5]], 3],
-  [[[1, 0.5, 0.25, 0.25, 0.5, 0.5], [1.5, 1.5]], 3],
-  [[[0.5, 0.25, 0.25, 0.5, 1.5], [1.5, 1.5]], 2],
+  [[[0.75, 0.25, 0.5, 0.5, 0.5, 0.5], [0.75, 0.25, 0.5, 1.5]], 4],
+  [[[0.5, 0.25, 0.25, 0.5, 0.5, 0.75, 0.25], [0.5, 0.25, 0.25, 0.5, 1.5]], 3],
+  [[[0.25, 0.25, 0.5, 0.75, 0.25, 0.5, 0.5], [0.75, 0.25, 0.5, 1.5]], 3],
+  [[[0.75, 0.25, 1.5, 0.5], [1, 0.5, 1.5]], 3],
+]
+
+/** カスタム「四分音符まで」: 最短が四分音符(6/8は付点四分音符を含む) */
+const QUARTER_MOTIFS: [Motif, number][] = [
+  [[[1, 1, 1, 1], [1, 1, 2]], 3],
+  [[[1, 1, 2], [1, 1, 2]], 3],
+  [[[2, 1, 1], [2, 2]], 2],
+  [[[2, 2], [1, 1, 2]], 2],
+  [[[1, 1, 2], [2, 2]], 2],
+  [[[1, 1, 1, 1], [1, 1, 1, 1]], 1.5],
+]
+const QUARTER_MOTIFS_34: [Motif, number][] = [
+  [[[1, 1, 1], [1, 2]], 3],
+  [[[2, 1], [1, 2]], 2],
+  [[[1, 1, 1], [3]], 1.5],
+  [[[1, 2], [1, 2]], 2],
+]
+const QUARTER_MOTIFS_68: [Motif, number][] = [
+  [[[1.5, 1.5], [1.5, 1.5]], 3],
+  [[[3], [1.5, 1.5]], 2],
+  [[[1, 1, 1], [1.5, 1.5]], 1.5],
+]
+/** 四分音符の単位でのシンコペーション: 2拍分の音が拍の裏(2拍目など)から始まる、または小節をまたいでタイで結ばれる */
+const QUARTER_SYNC_MOTIFS: [Motif, number][] = [
+  [[[1, 2, 1], [1, 1, 2]], 3],
+  [[[1, 2, 1], [2, 2]], 2],
+  [[[2, 1, 1], [1, 1, 2], [[0, 2]]], 3],
+  [[[1, 1, 1, 1], [1, 1, 2], [[0, 3]]], 3],
+]
+const QUARTER_SYNC_MOTIFS_34: [Motif, number][] = [
+  [[[1, 2], [1, 2]], 3],
+  [[[1, 1, 1], [1, 2], [[0, 2]]], 3],
+]
+const QUARTER_SYNC_MOTIFS_68: [Motif, number][] = [
+  [[[1, 2], [1.5, 1.5]], 2],
+  [[[1.5, 1.5], [1.5, 1.5], [[0, 1]]], 3],
 ]
 
 /**
@@ -165,11 +219,14 @@ interface MotifSet {
   triplet: [Motif, number][]
   tied: [Motif, number][]
   sixteenth: [Motif, number][]
+  /** カスタム用: 最短が四分音符の動機と、その中のシンコペーション */
+  quarter: [Motif, number][]
+  quarterSync: [Motif, number][]
 }
 const MOTIF_SETS: Record<MeterId, MotifSet> = {
-  '4/4': { basic: BASIC_MOTIFS, syncopated: SYNCOPATED_MOTIFS, triplet: TRIPLET_MOTIFS, tied: TIED_MOTIFS, sixteenth: SIXTEENTH_MOTIFS },
-  '3/4': { basic: BASIC_MOTIFS_34, syncopated: SYNCOPATED_MOTIFS_34, triplet: TRIPLET_MOTIFS_34, tied: TIED_MOTIFS_34, sixteenth: SIXTEENTH_MOTIFS_34 },
-  '6/8': { basic: BASIC_MOTIFS_68, syncopated: SYNCOPATED_MOTIFS_68, triplet: [], tied: TIED_MOTIFS_68, sixteenth: SIXTEENTH_MOTIFS_68 },
+  '4/4': { basic: BASIC_MOTIFS, syncopated: SYNCOPATED_MOTIFS, triplet: TRIPLET_MOTIFS, tied: TIED_MOTIFS, sixteenth: SIXTEENTH_MOTIFS, quarter: QUARTER_MOTIFS, quarterSync: QUARTER_SYNC_MOTIFS },
+  '3/4': { basic: BASIC_MOTIFS_34, syncopated: SYNCOPATED_MOTIFS_34, triplet: TRIPLET_MOTIFS_34, tied: TIED_MOTIFS_34, sixteenth: SIXTEENTH_MOTIFS_34, quarter: QUARTER_MOTIFS_34, quarterSync: QUARTER_SYNC_MOTIFS_34 },
+  '6/8': { basic: BASIC_MOTIFS_68, syncopated: SYNCOPATED_MOTIFS_68, triplet: [], tied: TIED_MOTIFS_68, sixteenth: SIXTEENTH_MOTIFS_68, quarter: QUARTER_MOTIFS_68, quarterSync: QUARTER_SYNC_MOTIFS_68 },
 }
 
 /** 最後の小節(主音で終わる) */
@@ -304,10 +361,16 @@ function nextStep(rng: Rng, st: State, ev: EventCtx): number | null {
   return cands.length ? weighted(rng, cands) : null
 }
 
-/** 解決が必要な傾向音か。第4音は常に、導音は長調で(短調の自然な第7音は傾向音にしない) */
+/**
+ * 解決が必要な傾向音か。
+ * - 第4音: リディア旋法(第4音が半音高い)以外では、第3音へ下がりたがる。
+ * - 導音(長7度): 長調とリディアでは、主音へ上がりたがる。短調の自然な第7音や、他の旋法の短7度は傾向音にしない。
+ */
 function isTendency(m: number, isChord: boolean, mode: Mode): boolean {
   if (isChord) return false
-  return m === 3 || (m === 6 && mode === 'major')
+  if (m === 3) return mode !== 'lydian'
+  if (m === 6) return mode === 'major' || mode === 'lydian'
+  return false
 }
 
 /** 和声音でない傾向音の次に許される音程 */
@@ -435,7 +498,35 @@ function walk(
 
 // ---------------------------------------------------------------- 採点
 
-function scoreMelody(bars: ScoreNote[][]): number {
+/** リズムの細かさ・多彩さの得点(難しい難易度で、簡単なリズムばかりの楽譜を選ばないようにする) */
+function rhythmBonus(bars: ScoreNote[][]): number {
+  const notes = bars.flat().filter((n) => n.step !== null)
+  const n = notes.length
+  const shortRatio = notes.filter((x) => x.beats < 1 - 1e-9).length / n
+  const kinds = new Set(notes.map((x) => Math.round(x.beats * 24))).size
+  let dottedPair = false
+  let triplet = false
+  let sixteenth = false
+  bars.forEach((bar) => {
+    bar.forEach((x, i) => {
+      if (x.step === null) return
+      if (isTriplet(x.beats)) triplet = true
+      if (Math.abs(x.beats - 0.25) < 1e-6) sixteenth = true
+      // 付点八分音符+十六分音符の組み合わせ
+      if (Math.abs(x.beats - 0.75) < 1e-6 && bar[i + 1] && Math.abs(bar[i + 1].beats - 0.25) < 1e-6) dottedPair = true
+    })
+  })
+  return (
+    Math.min(shortRatio, 0.7) * 14 +
+    Math.min(kinds, 7) * 0.8 +
+    (dottedPair ? 2 : 0) +
+    (triplet ? 2 : 0) +
+    (sixteenth ? 2 : 0) -
+    Math.max(0, 0.4 - shortRatio) * 20
+  )
+}
+
+function scoreMelody(bars: ScoreNote[][], richness = 0): number {
   const flat: { s: number; bar: number }[] = []
   // タイの続きの音符は同じ音の延長なので、旋律の動きとしては数えない
   let continued = false
@@ -499,34 +590,58 @@ function scoreMelody(bars: ScoreNote[][]): number {
     const c = bars[b].map((x) => x.step).join()
     if (a === c) score -= 1
   }
+  // 難しい難易度ほど、音符が細かく多彩なリズムを高く評価する
+  if (richness > 0) score += richness * rhythmBonus(bars)
   return score
 }
 
 // ---------------------------------------------------------------- 生成
 
-function sampleOnce(rng: Rng, level: Level, mode: Mode, meter: Meter): ScoreNote[][] | null {
+/** 動機の選び方: 主題(1小節目から使う動機)と、後半の対照楽節も含めた候補 */
+interface Plan {
+  theme: [Motif, number][]
+  pool: [Motif, number][]
+  /** リズムの細かさをどれだけ重く採点するか(0=採点しない) */
+  richness: number
+}
+
+const scaled = (list: [Motif, number][], k: number): [Motif, number][] => list.map(([m, w]) => [m, w * k])
+
+function buildPlan(level: Level, meter: Meter, custom: CustomOptions): Plan {
+  const set = MOTIF_SETS[meter.id]
+  const characteristic: [Motif, number][] = [...set.syncopated, ...set.triplet, ...set.tied]
+  if (level === 'advanced') {
+    // 十六分音符・付点八分+十六分・三連符を織り交ぜた動機を主題にし、基本のリズムはほとんど使わない
+    return {
+      theme: set.sixteenth,
+      pool: [...set.sixteenth, ...scaled(characteristic, 0.5), ...scaled(set.basic, 0.1)],
+      richness: 1,
+    }
+  }
+  if (level === 'intermediate') {
+    return { theme: characteristic, pool: [...characteristic, ...scaled(set.basic, 0.25)], richness: 0.5 }
+  }
+  if (level === 'custom') {
+    const order = { quarter: 0, eighth: 1, triplet: 2, sixteenth: 3 }[custom.shortest]
+    const basic = [...set.quarter, ...(order >= 1 ? set.basic : [])]
+    const extras = [...(order >= 2 ? set.triplet : []), ...(order >= 3 ? set.sixteenth : [])]
+    const sync = custom.syncopation ? [...set.quarterSync, ...(order >= 1 ? [...set.syncopated, ...set.tied] : [])] : []
+    const special = [...sync, ...extras]
+    return {
+      theme: special.length ? special : basic,
+      pool: special.length ? [...special, ...scaled(basic, 0.4)] : basic,
+      richness: [0, 0.3, 0.6, 1][order],
+    }
+  }
+  return { theme: set.basic, pool: set.basic, richness: 0 }
+}
+
+function sampleOnce(rng: Rng, plan: Plan, mode: Mode, meter: Meter): ScoreNote[][] | null {
   const parallel = rng() < 0.55
   const roots = CHORD_PLANS[Math.floor(rng() * CHORD_PLANS.length)]
 
-  // 拍子と難易度に合う動機を選ぶ。中級は、シンコペーションか三連符を含む動機を主題にする。
-  // 上級は、十六分音符を含む動機を主題にし、後半(対照楽節)には他の特徴的な動機も使う
-  const set = MOTIF_SETS[meter.id]
-  const characteristic: [Motif, number][] = [...set.syncopated, ...set.triplet, ...set.tied]
-  const basicHalf = set.basic.map(([m, w]): [Motif, number] => [m, w * 0.5])
-  let theme: [Motif, number][]
-  let pool: [Motif, number][]
-  if (level === 'advanced') {
-    theme = set.sixteenth
-    pool = [...set.sixteenth, ...characteristic, ...basicHalf]
-  } else if (level === 'intermediate') {
-    theme = characteristic
-    pool = [...characteristic, ...basicHalf]
-  } else {
-    theme = set.basic
-    pool = set.basic
-  }
-  const A = weighted(rng, theme)
-  const B = parallel ? A : weighted(rng, pool.filter(([m]) => m !== A))
+  const A = weighted(rng, plan.theme)
+  const B = parallel ? A : weighted(rng, plan.pool.filter(([m]) => m !== A))
 
   // 4小節目は、ときどきフレーズ末に休符(息継ぎ)を入れる
   let r4 = B[1]
@@ -593,33 +708,53 @@ function sampleOnce(rng: Rng, level: Level, mode: Mode, meter: Meter): ScoreNote
   return [...first.bars, ...second.bars, ...third.bars, ...fourth.bars, finalBar]
 }
 
-function pickKey(rng: Rng, level: Level): KeyInfo {
+const isMajorKey = (k: KeyInfo) => k.mode === 'major'
+
+function pickKey(rng: Rng, level: Level, custom: CustomOptions): KeyInfo {
   if (level === 'beginner') return KEY_C_MAJOR
+  if (level === 'custom') {
+    const max = custom.maxAccidentals
+    const within = (k: KeyInfo) => keySignatureCount(k) <= max
+    const pick = (keys: KeyInfo[]) => keys[Math.floor(rng() * keys.length)]
+    if (custom.keys === 'c-major') return KEY_C_MAJOR
+    if (custom.keys === 'church') return pick(churchKeys(max))
+    const all = ADVANCED_KEYS.filter(within)
+    if (custom.keys === 'major') return pick(all.filter(isMajorKey))
+    // 長調と短調を同じ確率で、その中から選ぶ
+    const wantMajor = rng() < 0.5
+    return pick(all.filter((k) => (k.mode === 'major') === wantMajor))
+  }
   // 長調と短調を同じ確率で、その中から調を選ぶ(上級は調号5つまで)
   const mode: Mode = rng() < 0.5 ? 'major' : 'minor'
   const keys = (level === 'advanced' ? ADVANCED_KEYS : INTERMEDIATE_KEYS).filter((k) => k.mode === mode)
   return keys[Math.floor(rng() * keys.length)]
 }
 
-/** 初級は4/4。中級は4/4と3/4、上級は4/4・3/4・6/8から選ぶ */
-function pickMeter(rng: Rng, level: Level): Meter {
+function pickMeter(rng: Rng, level: Level, custom: CustomOptions): Meter {
+  const random = () => METERS[weighted<MeterId>(rng, [['4/4', 0.4], ['3/4', 0.3], ['6/8', 0.3]])]
   if (level === 'beginner') return METERS['4/4']
   if (level === 'intermediate') return METERS[weighted<MeterId>(rng, [['4/4', 0.65], ['3/4', 0.35]])]
-  return METERS[weighted<MeterId>(rng, [['4/4', 0.4], ['3/4', 0.3], ['6/8', 0.3]])]
+  if (level === 'custom') return custom.meter === 'random' ? random() : METERS[custom.meter]
+  return random()
 }
 
-export function generateScore(seed = Math.floor(Math.random() * 2 ** 31), level: Level = 'beginner'): Score {
+export function generateScore(
+  seed = Math.floor(Math.random() * 2 ** 31),
+  level: Level = 'beginner',
+  custom: CustomOptions = DEFAULT_CUSTOM,
+): Score {
   const rng = mulberry32(seed)
-  const key = pickKey(rng, level)
-  const meter = pickMeter(rng, level)
+  const key = pickKey(rng, level, custom)
+  const meter = pickMeter(rng, level, custom)
+  const plan = buildPlan(level, meter, custom)
   let best: ScoreNote[][] | null = null
   let bestScore = -Infinity
   let found = 0
   for (let attempt = 0; attempt < CANDIDATES * 10 && found < CANDIDATES; attempt++) {
-    const bars = sampleOnce(rng, level, key.mode, meter)
+    const bars = sampleOnce(rng, plan, key.mode, meter)
     if (!bars) continue
     found++
-    const sc = scoreMelody(bars)
+    const sc = scoreMelody(bars, plan.richness)
     if (sc > bestScore) {
       best = bars
       bestScore = sc

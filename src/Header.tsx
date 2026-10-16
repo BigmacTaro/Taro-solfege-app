@@ -5,9 +5,20 @@ import type { Settings } from './useSettings'
 export function Header({ s, locked, onReset }: { s: Settings; locked: boolean; onReset: () => Promise<void> }) {
   const [open, setOpen] = useState(false)
   const [resetMsg, setResetMsg] = useState('')
+  const doReset = async () => {
+    setResetMsg('リセット中…')
+    await onReset()
+    setResetMsg('✓ リセットしました')
+    setTimeout(() => setResetMsg(''), 3500)
+  }
   return (
     <header className="topbar">
-      <div className="reloadnote">動作がおかしくなったらブラウザをリロードしてください</div>
+      <div className="toprow">
+        <div className="reloadnote">動作がおかしくなったらブラウザをリロードしてください</div>
+        <button className="secondary tinyreset" onClick={doReset} title="音が出ない・課題が始まらないときに押す">
+          🔧 {resetMsg || '音声リセット'}
+        </button>
+      </div>
       <div className="topbar-row">
         <label className="sens">
           <span className="lbl">
@@ -54,6 +65,7 @@ export function Header({ s, locked, onReset }: { s: Settings; locked: boolean; o
               </select>
             </label>
           )}
+          <p className="muted small groupnote">AGC・ノイズ抑制・入力デバイスは、課題の途中では変更できません。</p>
           <label className="field">
             入力の遅れの補正: {s.latencyMs}ms
             <input
@@ -65,19 +77,9 @@ export function Header({ s, locked, onReset }: { s: Settings; locked: boolean; o
               onChange={(e) => s.setLatencyMs(Number(e.target.value))}
             />
           </label>
-          <div className="resetrow">
-            <button
-              className="secondary"
-              onClick={async () => {
-                setResetMsg('リセット中…')
-                await onReset()
-                setResetMsg('リセットしました。もう一度お試しください。')
-              }}
-            >
-              🔧 音声をリセット
-            </button>
-            <span className="muted small">音が出ない・課題が始まらないときに押してください。{resetMsg && <b> {resetMsg}</b>}</span>
-          </div>
+          <p className="muted small groupnote">
+            判定結果で全体に「遅れ」が出るときに上げると、タイミングのずれが小さくなります(Bluetoothイヤホンなどで有効)。
+          </p>
           <details className="adv">
             <summary>上級者モード</summary>
             <label>
@@ -85,10 +87,6 @@ export function Header({ s, locked, onReset }: { s: Settings; locked: boolean; o
               音価の短さも評価する(短すぎる音を指摘)
             </label>
           </details>
-          <p className="muted small">
-            判定結果で全体に「遅れ」が出るときに上げると、タイミングのずれが小さくなります(Bluetoothイヤホンなどで有効)。
-            AGC・ノイズ抑制・入力デバイスは、課題の途中では変更できません。
-          </p>
         </div>
       )}
     </header>
