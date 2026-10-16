@@ -8,6 +8,8 @@ export interface Settings {
   /** 打ち込み・発音の遅れの補正(ミリ秒)。マイク入力やBluetoothの遅延を打ち消す */
   latencyMs: number
   instrument: Instrument
+  /** 上級者モード: 短すぎる音も指摘する */
+  checkShort: boolean
   /** マイクを開いたときに取得した入力デバイスの一覧 */
   devices: MediaDeviceInfo[]
   setDevices(v: MediaDeviceInfo[]): void
@@ -17,6 +19,7 @@ export interface Settings {
   setDeviceId(v: string): void
   setLatencyMs(v: number): void
   setInstrumentId(id: string): void
+  setCheckShort(v: boolean): void
 }
 
 /** マイク・楽器の設定。端末に保存する */
@@ -27,6 +30,7 @@ export function useSettings(): Settings {
   const [deviceId, setDeviceId] = useState('')
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [latencyMs, setLatencyMs] = useState(() => load('latencyMs', 0))
+  const [checkShort, setCheckShort] = useState(() => load('checkShort', false))
   const [instrumentId, setInstrumentId] = useState(() => load('instrument', 'c'))
 
   useEffect(() => save('gain', gain), [gain])
@@ -34,11 +38,14 @@ export function useSettings(): Settings {
   useEffect(() => save('ns', ns), [ns])
   useEffect(() => save('latencyMs', latencyMs), [latencyMs])
   useEffect(() => save('instrument', instrumentId), [instrumentId])
+  useEffect(() => save('checkShort', checkShort), [checkShort])
 
   return {
     mic: { gain, agc, ns, deviceId },
     latencyMs,
     instrument: findInstrument(instrumentId),
+    checkShort,
+    setCheckShort,
     devices,
     setDevices,
     setGain,

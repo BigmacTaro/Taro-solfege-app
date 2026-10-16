@@ -19,7 +19,6 @@ export function App() {
     <>
       <Header s={settings} locked={locked} />
       <main>
-        <h1>ソルフェージュ自習</h1>
         <div className="tabs" role="tablist">
           <button
             role="tab"
